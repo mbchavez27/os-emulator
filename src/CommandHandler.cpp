@@ -3,6 +3,7 @@
 #include "AsciiArt.h"
 #include <iostream>
 #include <string>
+#include <vector>
 #include <cstdlib>
 
 CommandHandler::CommandHandler(Emulator &e) : emulator(e) {}
@@ -24,7 +25,7 @@ void CommandHandler::run()
     // Prints header once on startup
     print_header();
 
-    // Runs continously until the 'exit' command is issued
+    // Loop until `exit` flips Emulator::is_app_alive to false
     while (emulator.is_app_alive)
     {
         std::cout << "Enter a command: " << std::flush;
@@ -68,14 +69,19 @@ void CommandHandler::run()
         }
         else if (cmd == "clear")
         {
-// Cross-platform clear screen
+            // Deliberate system() call: no portable C++ API for console clear
 #ifdef _WIN32
-            system("cls");
+            if (std::system("cls") != 0)
+            {
+                std::cout << "Failed to clear screen.\n";
+            }
 #else
-            system("clear");
+            if (std::system("clear") != 0)
+            {
+                std::cout << "Failed to clear screen.\n";
+            }
 #endif
 
-            // Reprint header after clearing
             print_header();
         }
         else if (cmd == "exit")

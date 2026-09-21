@@ -3,13 +3,11 @@
 
 int main()
 {
-    // Instantiate the shared application state
+    // Single owner of app state; handler borrows it by reference, no lifetime issue
     Emulator emulator;
 
-    // Create the command handler and link it to our emulator instance
     CommandHandler handler(emulator);
 
-    // Enter the main interactive console loop
     handler.run();
 
     return 0;
