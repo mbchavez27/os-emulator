@@ -4,7 +4,8 @@ CSOPESY command-line OS emulator (early stub stage).
 
 ## What it is right now
 
-Interactive REPL that prints an ASCII `CSOPESY` header and prompts `Enter a command: `.
+Interactive REPL that prints an ASCII `CSOPESY` header plus a colored greeting
+(green welcome line, yellow `exit`/`clear` hints and `initialize` notice via ANSI escapes).
 Commands are parsed by first token (leading whitespace trimmed, arguments ignored).
 
 Recognized commands:
@@ -27,6 +28,7 @@ Unknown input prints `Command not recognized. Please try again.` Empty lines are
 include/
   AsciiArt.h       # convert_to_ascii() declaration, ASCII_ROWS constant
   CommandHandler.h # REPL loop declaration, borrows Emulator by reference
+  ConsoleColors.h  # ANSI color constants (header-only, no build change)
   Emulator.h       # shared liveness state (is_app_alive, exit_app())
 src/
   main.cpp            # owns Emulator, runs CommandHandler
@@ -41,6 +43,7 @@ CMakeLists.txt
 - C++17 compiler: GCC (tested 15.2.1), Clang, or MSVC
 - No third-party libraries
 - Linux uses `clear`, Windows uses `cls` for the `clear` command
+- Colors use ANSI escape codes; needs an ANSI-capable terminal (Windows Terminal, modern cmd/PowerShell work; raw Win32 console may not show colors)
 
 ## How to run
 

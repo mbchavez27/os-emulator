@@ -1,6 +1,7 @@
 #include "CommandHandler.h"
 #include "Emulator.h"
 #include "AsciiArt.h"
+#include "ConsoleColors.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -10,12 +11,17 @@ CommandHandler::CommandHandler(Emulator &e) : emulator(e) {}
 
 void CommandHandler::print_header()
 {
+    // Print the ASCII Art
     std::vector<std::string> art = ascii_art::convert_to_ascii("CSOPESY");
     for (const auto &line : art)
     {
         std::cout << line << "\n";
     }
-    std::cout << "Welcome to CSOPESY Command Line Emulator!\n\n";
+
+    // Print the colored greeting text
+    std::cout << console_colors::GREEN << "Hello, Welcome to CSOPESY commandline!" << console_colors::RESET << "\n";
+    std::cout << console_colors::YELLOW << "Type 'exit' to quit, 'clear' to clear the screen\n\n";
+    std::cout << "** IMPORTANT: Type 'initialize' to load config and start system **" << console_colors::RESET << "\n\n";
 }
 
 void CommandHandler::run()
@@ -50,22 +56,27 @@ void CommandHandler::run()
         if (cmd == "initialize")
         {
             std::cout << "initialize command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "screen")
         {
             std::cout << "screen command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "scheduler-start")
         {
             std::cout << "scheduler-start command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "scheduler-stop")
         {
             std::cout << "scheduler-stop command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "report-util")
         {
             std::cout << "report-util command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "clear")
         {
@@ -92,6 +103,7 @@ void CommandHandler::run()
         else
         {
             std::cout << "Command not recognized. Please try again.\n";
+            std::cout << "\n";
         }
     }
 }
