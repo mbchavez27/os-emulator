@@ -47,28 +47,46 @@ CMakeLists.txt
 
 ## How to run
 
+### Linux / macOS
+
 ```bash
 cmake -S . -B build
 cmake --build build
 ./build/os-emulator
 ```
 
-One-step build + run:
+### Windows (Git Bash / MSVC)
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/Debug/os-emulator.exe
+```
+
+### Windows (PowerShell)
+
+```powershell
+cmake -S . -B build
+cmake --build build
+.\build\Debug\os-emulator.exe
+```
+
+> **Note**: MSVC is a multi-configuration generator, so the binary is placed inside `Debug/` (or `Release/` if building with `--config Release`).
+
+### One-step build + run
 
 ```bash
 cmake --build build --target run
 ```
 
-Windows (PowerShell):
+### Quick non-interactive check
 
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
-.\build\Release\os-emulator.exe
-```
-
-Quick non-interactive check:
-
+Linux / macOS:
 ```bash
 printf "initialize\nscreen\nfoo\nclear\nexit\n" | ./build/os-emulator
+```
+
+Windows (Git Bash):
+```bash
+printf "initialize\nscreen\nfoo\nclear\nexit\n" | ./build/Debug/os-emulator.exe
 ```
