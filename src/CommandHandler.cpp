@@ -74,22 +74,14 @@ void CommandHandler::run()
             if (args.rfind("-ls", 0) == 0)
             {
                 auto procs = scheduler.snapshot();
+                std::cout << "--------------------------------------------------\n";
                 std::cout << "Running processes:\n";
                 for (const auto &p : procs)
                 {
-                    if (p->state == ProcState::Running || p->state == ProcState::Queued)
+                    if (p->state == ProcState::Running)
                     {
-                        // Queued procs show as waiting; Running show core + progress.
-                        // Keep FCFS order (arrival_id) as stored in snapshot().
-                        if (p->state == ProcState::Running)
-                        {
-                            std::cout << p->name << "  (Started)  Core: " << p->core
-                                      << "  " << p->done << " / " << p->total << "\n";
-                        }
-                        else
-                        {
-                            std::cout << p->name << "  (Queued)  " << p->done << " / " << p->total << "\n";
-                        }
+                        std::cout << p->name << "  (" << Scheduler::formatTime(p->start) << ")  Core: " << p->core
+                                  << "  " << p->done << " / " << p->total << "\n";
                     }
                 }
                 std::cout << "\nFinished processes:\n";
@@ -97,10 +89,10 @@ void CommandHandler::run()
                 {
                     if (p->state == ProcState::Finished)
                     {
-                        std::cout << p->name << "  Finished  " << p->done << " / " << p->total << "\n";
+                        std::cout << p->name << "  (" << Scheduler::formatTime(p->start) << ")  Finished  " << p->done << " / " << p->total << "\n";
                     }
                 }
-                std::cout << "\n";
+                std::cout << "--------------------------------------------------\n\n";
             }
             else
             {

@@ -79,4 +79,6 @@ marquee_app
 .clangd/
 
 # FCFS homework generated process logs (submit as ZIP, do not commit)
+logs/
+fcfs_logs.zip
 process*.txt

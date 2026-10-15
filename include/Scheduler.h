@@ -31,6 +31,8 @@ public:
     // Homework-only toggle. Disable for MP submission (disk I/O hurts perf).
     void setFileLogEnabled(bool enabled);
 
+    static std::string formatTime(const std::chrono::system_clock::time_point& tp);
+
 private:
     void schedLoop();
     void workerLoop(int core);
@@ -41,8 +43,8 @@ private:
 
     bool anyIdleLocked() const;
     int findIdleLocked() const;
-    static std::string formatTime(const std::chrono::system_clock::time_point& tp);
     void logPrint(const std::shared_ptr<Process>& p, int core);
+    std::string logPath(const std::string& name) const;
 
     Algo algo_;
     std::queue<std::shared_ptr<Process>> q_;
@@ -58,4 +60,5 @@ private:
     std::vector<std::thread> workers_;
     bool running_ = false;
     bool file_log_enabled_ = true;
+    std::string log_dir_ = "logs";
 };
