@@ -9,6 +9,7 @@ add_executable(os-emulator
   src/main.cpp
   src/CommandHandler.cpp
   src/AsciiArt.cpp
+  src/Scheduler.cpp
 )
 target_include_directories(os-emulator PRIVATE include)
 target_compile_options(os-emulator PRIVATE -Wall -Wextra)

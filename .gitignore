@@ -77,3 +77,6 @@ marquee_app
 .idea/
 *.code-workspace
 .clangd/
+
+# FCFS homework generated process logs (submit as ZIP, do not commit)
+process*.txt
