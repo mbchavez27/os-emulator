@@ -1,24 +1,30 @@
 # os-emulator
 
-CSOPESY command-line OS emulator (early stub stage).
+CSOPESY command-line OS emulator with FCFS scheduler (`feat/fcfs-homework`).
 
 ## What it is right now
 
-Interactive REPL that prints an ASCII `CSOPESY` header plus a colored greeting
-(green welcome line, yellow `exit`/`clear` hints and `initialize` notice via ANSI escapes).
-Commands are parsed by first token (leading whitespace trimmed, arguments ignored).
+Interactive REPL plus FCFS CPU scheduler:
+
+- Scheduler: First-Come-First-Serve, non-preemptive FIFO via isolated `pickNextFCFS()`.
+- Threads: 1 scheduler thread + 4 CPU worker threads (`Scheduler::NUM_CORES = 4`).
+- Auto-start: creates 10 processes (`process01`–`process10`), 100 print commands each.
+- `print` (homework-only): each process appends to `<name>.txt` with timestamp + core:
+  `(MM/DD/YYYY HH:MM:SS AM/PM) Core:<n> "Hello world from <name>!"`.
+- `screen -ls`: Running (`name, Started, Core:N, done/total`) vs Finished (`name, Finished, done/total`) in FCFS order.
 
 Recognized commands:
 
 | Command | Current behavior |
 | --- | --- |
 | `initialize` | Prints stub acknowledgment |
-| `screen` | Prints stub acknowledgment |
-| `scheduler-start` | Prints stub acknowledgment |
-| `scheduler-stop` | Prints stub acknowledgment |
+| `screen -ls` | Shows Running / Finished process lists |
+| `screen` | Prints stub acknowledgment (use `screen -ls`) |
+| `scheduler-start` | Starts scheduler (auto-started on launch) |
+| `scheduler-stop` | Stops scheduler threads |
 | `report-util` | Prints stub acknowledgment |
 | `clear` | Clears console via `system("clear"/"cls")`, re-prints header |
-| `exit` | Sets `Emulator::is_app_alive = false`, exits loop |
+| `exit` | Stops scheduler, sets `Emulator::is_app_alive = false`, exits loop |
 
 Unknown input prints `Command not recognized. Please try again.` Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits.
 
@@ -27,14 +33,19 @@ Unknown input prints `Command not recognized. Please try again.` Empty lines are
 ```text
 include/
   AsciiArt.h       # convert_to_ascii() declaration, ASCII_ROWS constant
-  CommandHandler.h # REPL loop declaration, borrows Emulator by reference
+  CommandHandler.h # REPL loop declaration, borrows Emulator + Scheduler by reference
   ConsoleColors.h  # ANSI color constants (header-only, no build change)
   Emulator.h       # shared liveness state (is_app_alive, exit_app())
+  Process.h        # minimal FCFS process struct (name, arrival_id, done, state, core)
+  Scheduler.h      # FCFS scheduler (1 + 4 threads, pickNextFCFS policy)
 src/
-  main.cpp            # owns Emulator, runs CommandHandler
-  CommandHandler.cpp  # command parsing and dispatch
+  main.cpp            # owns Emulator + Scheduler, auto-starts scheduler
+  CommandHandler.cpp  # command parsing and dispatch (screen -ls, exit stops scheduler)
+  Scheduler.cpp       # schedLoop, workerLoop, file logging
   AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
 CMakeLists.txt
+specs/
+  fcfs_specs.md    # homework spec
 ```
 
 ## Dependencies
@@ -72,3 +83,31 @@ Quick non-interactive check:
 ```bash
 printf "initialize\nscreen\nfoo\nclear\nexit\n" | ./build/os-emulator
 ```
+
+## FCFS homework run
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/os-emulator
+```
+
+Inside the emulator:
+
+```text
+screen -ls   # every 1-2s until all 10 show under Finished processes
+exit         # stops scheduler, closes emulator
+```
+
+Expected: finishes in FCFS order, produces 10 files:
+
+```bash
+ls process*.txt        # process01.txt … process10.txt
+head -n 5 process01.txt
+zip fcfs_logs.zip process*.txt  # submission bundle
+```
+
+Notes:
+
+- File logging is homework-only. Disable for MP via `Scheduler::setFileLogEnabled(false)` — disk I/O hurts scheduler perf.
+- Generated `process*.txt` logs are gitignored, not committed.
