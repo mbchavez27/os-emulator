@@ -11,12 +11,19 @@ add_executable(os-emulator
   src/AsciiArt.cpp
   src/Scheduler.cpp
 )
+
 target_include_directories(os-emulator PRIVATE include)
-target_compile_options(os-emulator PRIVATE -Wall -Wextra)
+
+# Compiler-specific warning flags
+if(MSVC)
+  target_compile_options(os-emulator PRIVATE /W4)
+else()
+  target_compile_options(os-emulator PRIVATE -Wall -Wextra)
+endif()
 
 # Build + run in one step: cmake --build build --target run
 add_custom_target(run
-  COMMAND os-emulator
+  COMMAND $<TARGET_FILE:os-emulator>
   DEPENDS os-emulator
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL
