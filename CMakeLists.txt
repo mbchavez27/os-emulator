@@ -5,26 +5,40 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Domain logic with no UI dependency; shared by the CLI and the tests.
+add_library(emulator_core STATIC
+  src/Config.cpp
+)
+target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 add_executable(os-emulator
   src/main.cpp
   src/CommandHandler.cpp
   src/AsciiArt.cpp
 )
+target_link_libraries(os-emulator PRIVATE emulator_core)
 
-target_include_directories(os-emulator PRIVATE include)
+enable_testing()
+add_executable(test_config tests/test_config.cpp)
+target_link_libraries(test_config PRIVATE emulator_core)
 
 # Compiler-specific warning flags
-if(MSVC)
-  target_compile_options(os-emulator PRIVATE /W4)
-else()
-  target_compile_options(os-emulator PRIVATE -Wall -Wextra)
-endif()
+foreach(target emulator_core os-emulator test_config)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4)
+  else()
+    target_compile_options(${target} PRIVATE -Wall -Wextra)
+  endif()
+endforeach()
+
+add_test(NAME config COMMAND test_config)
 
 # Build + run in one step: cmake --build build --target run
+# Run from the source dir so config.txt, logs/, and csopesy-log.txt resolve there.
 add_custom_target(run
   COMMAND $<TARGET_FILE:os-emulator>
   DEPENDS os-emulator
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   USES_TERMINAL
   COMMENT "Build and run os-emulator"
 )

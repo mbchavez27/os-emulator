@@ -53,10 +53,34 @@ void CommandHandler::run()
         std::string cmd = line.substr(first_non_space, space_pos - first_non_space);
 
         // Process commands
+        // initialize and exit are the only commands valid before initialization.
         if (cmd == "initialize")
         {
-            std::cout << "initialize command recognized. Doing something.\n";
-            std::cout << "\n";
+            if (emulator.isInitialized())
+            {
+                std::cout << "System is already initialized.\n\n";
+            }
+            else
+            {
+                std::string error;
+                if (emulator.initialize("config.txt", error))
+                {
+                    std::cout << "Initialization successful.\n\n";
+                }
+                else
+                {
+                    std::cout << error << "\n\n";
+                }
+            }
+        }
+        else if (cmd == "exit")
+        {
+            emulator.exit_app();
+            break; // Closes the CLI immediately
+        }
+        else if (!emulator.isInitialized())
+        {
+            std::cout << "System not yet initialized. Type 'initialize' to load config.\n\n";
         }
         else if (cmd == "screen")
         {
@@ -93,11 +117,6 @@ void CommandHandler::run()
 #endif
 
             print_header();
-        }
-        else if (cmd == "exit")
-        {
-            emulator.exit_app();
-            break; // Closes the CLI immediately
         }
         else
         {
