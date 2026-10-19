@@ -72,13 +72,11 @@ Testing/
 os-emulator
 marquee_app
 
+# Generated CPU utilization report
+csopesy-log.txt
+
 # IDE / editor
 .vscode/
 .idea/
 *.code-workspace
 .clangd/
-
-# FCFS homework generated process logs (submit as ZIP, do not commit)
-logs/
-fcfs_logs.zip
-process*.txt

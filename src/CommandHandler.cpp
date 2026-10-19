@@ -1,6 +1,5 @@
 #include "CommandHandler.h"
 #include "Emulator.h"
-#include "Scheduler.h"
 #include "AsciiArt.h"
 #include "ConsoleColors.h"
 #include <iostream>
@@ -8,7 +7,7 @@
 #include <vector>
 #include <cstdlib>
 
-CommandHandler::CommandHandler(Emulator &e, Scheduler &s) : emulator(e), scheduler(s) {}
+CommandHandler::CommandHandler(Emulator &e) : emulator(e) {}
 
 void CommandHandler::print_header()
 {
@@ -61,53 +60,17 @@ void CommandHandler::run()
         }
         else if (cmd == "screen")
         {
-            // Support `screen -ls`. First token is `screen`, args follow.
-            std::string args;
-            if (space_pos != std::string::npos)
-            {
-                size_t arg_start = line.find_first_not_of(" \t", space_pos);
-                if (arg_start != std::string::npos)
-                {
-                    args = line.substr(arg_start);
-                }
-            }
-            if (args.rfind("-ls", 0) == 0)
-            {
-                auto procs = scheduler.snapshot();
-                std::cout << "--------------------------------------------------\n";
-                std::cout << "Running processes:\n";
-                for (const auto &p : procs)
-                {
-                    if (p->state == ProcState::Running)
-                    {
-                        std::cout << p->name << "  (" << Scheduler::formatTime(p->start) << ")  Core: " << p->core
-                                  << "  " << p->done << " / " << p->total << "\n";
-                    }
-                }
-                std::cout << "\nFinished processes:\n";
-                for (const auto &p : procs)
-                {
-                    if (p->state == ProcState::Finished)
-                    {
-                        std::cout << p->name << "  (" << Scheduler::formatTime(p->start) << ")  Finished  " << p->done << " / " << p->total << "\n";
-                    }
-                }
-                std::cout << "--------------------------------------------------\n\n";
-            }
-            else
-            {
-                std::cout << "screen command recognized. Doing something.\n\n";
-            }
+            std::cout << "screen command recognized. Doing something.\n\n";
         }
         else if (cmd == "scheduler-start")
         {
-            scheduler.start();
-            std::cout << "Scheduler started.\n\n";
+            std::cout << "scheduler-start command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "scheduler-stop")
         {
-            scheduler.stop();
-            std::cout << "Scheduler stopped.\n\n";
+            std::cout << "scheduler-stop command recognized. Doing something.\n";
+            std::cout << "\n";
         }
         else if (cmd == "report-util")
         {
@@ -133,7 +96,6 @@ void CommandHandler::run()
         }
         else if (cmd == "exit")
         {
-            scheduler.stop();
             emulator.exit_app();
             break; // Closes the CLI immediately
         }

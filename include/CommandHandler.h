@@ -2,7 +2,6 @@
 
 // Forward declaration of the Emulator class
 class Emulator;
-class Scheduler;
 
 /**
  * @brief Handles user commands and interactions for the Emulator instance.
@@ -10,7 +9,7 @@ class Scheduler;
 class CommandHandler
 {
 public:
-    explicit CommandHandler(Emulator &emulator, Scheduler &scheduler);
+    explicit CommandHandler(Emulator &emulator);
 
     /**
      * @brief Starts the main command processing loop.
@@ -24,5 +23,4 @@ public:
 
 private:
     Emulator &emulator; ///< Reference to the managed Emulator instance.
-    Scheduler &scheduler; ///< Reference to the FCFS scheduler.
 };
