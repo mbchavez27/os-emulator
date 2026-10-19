@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Domain logic with no UI dependency; shared by the CLI.
 add_library(emulator_core STATIC
   src/Config.cpp
+  src/Instruction.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

@@ -58,10 +58,12 @@ include/
   Config.h         # validated configuration value
   ConsoleColors.h  # ANSI color constants (header-only, no build change)
   Emulator.h       # liveness state + loaded configuration
+  Instruction.h    # random program instructions (Op, Instruction, Program)
 src/
   main.cpp            # owns Emulator, runs CommandHandler
   CommandHandler.cpp  # command parsing, gating, and dispatch
   Config.cpp          # config.txt parsing and validation
+  Instruction.cpp     # seeded instruction generator + static size
   AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
 config.txt            # sample configuration
 CMakeLists.txt
