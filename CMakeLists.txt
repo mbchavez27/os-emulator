@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(emulator_core STATIC
   src/Config.cpp
   src/Instruction.cpp
+  src/Process.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

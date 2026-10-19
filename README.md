@@ -59,11 +59,13 @@ include/
   ConsoleColors.h  # ANSI color constants (header-only, no build change)
   Emulator.h       # liveness state + loaded configuration
   Instruction.h    # random program instructions (Op, Instruction, Program)
+  Process.h        # process entity + single-step execution
 src/
   main.cpp            # owns Emulator, runs CommandHandler
   CommandHandler.cpp  # command parsing, gating, and dispatch
   Config.cpp          # config.txt parsing and validation
   Instruction.cpp     # seeded instruction generator + static size
+  Process.cpp         # flattening, step dispatch, FOR frame stack
   AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
 config.txt            # sample configuration
 CMakeLists.txt
