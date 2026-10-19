@@ -94,7 +94,7 @@ void CommandHandler::run()
             }
             else
             {
-                emulator.scheduler().start();
+                emulator.scheduler().start(emulator.config());
                 std::cout << "Scheduler started.\n\n";
             }
         }

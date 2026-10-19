@@ -15,7 +15,7 @@ Recognized commands:
 | --- | --- |
 | `initialize` | Loads and validates `config.txt` |
 | `screen` | Stub (requires initialization) |
-| `scheduler-start` | Starts the CPU clock thread |
+| `scheduler-start` | Starts the CPU clock, dispatch, and worker threads |
 | `scheduler-stop` | Stops the clock thread and prints the tick count |
 | `report-util` | Stub (requires initialization) |
 | `clear` | Clears console via `system("clear"/"cls")`, re-prints header |

@@ -60,6 +60,9 @@ public:
     /// RUNNING -> READY; used by the scheduler when a time slice expires.
     void markReady();
 
+    /// READY -> RUNNING; called by the scheduler when a core is assigned.
+    void markRunning();
+
     /**
      * @brief Executes exactly one instruction.
      *

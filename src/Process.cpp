@@ -132,6 +132,19 @@ void Process::markReady()
     state_ = ProcessState::READY;
 }
 
+void Process::markRunning()
+{
+    if (state_ == ProcessState::RUNNING)
+    {
+        return;
+    }
+    if (state_ != ProcessState::READY)
+    {
+        throw std::logic_error("markRunning() requires a ready process");
+    }
+    state_ = ProcessState::RUNNING;
+}
+
 StepOutcome Process::step()
 {
     if (state_ == ProcessState::FINISHED)
