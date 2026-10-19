@@ -88,13 +88,28 @@ void CommandHandler::run()
         }
         else if (cmd == "scheduler-start")
         {
-            std::cout << "scheduler-start command recognized. Doing something.\n";
-            std::cout << "\n";
+            if (emulator.scheduler().isRunning())
+            {
+                std::cout << "Scheduler already running.\n\n";
+            }
+            else
+            {
+                emulator.scheduler().start();
+                std::cout << "Scheduler started.\n\n";
+            }
         }
         else if (cmd == "scheduler-stop")
         {
-            std::cout << "scheduler-stop command recognized. Doing something.\n";
-            std::cout << "\n";
+            if (!emulator.scheduler().isRunning())
+            {
+                std::cout << "Scheduler is not running.\n\n";
+            }
+            else
+            {
+                emulator.scheduler().stop();
+                std::cout << "Scheduler stopped after "
+                          << emulator.scheduler().cycleCount() << " CPU cycles.\n\n";
+            }
         }
         else if (cmd == "report-util")
         {

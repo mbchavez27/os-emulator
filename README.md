@@ -15,11 +15,11 @@ Recognized commands:
 | --- | --- |
 | `initialize` | Loads and validates `config.txt` |
 | `screen` | Stub (requires initialization) |
-| `scheduler-start` | Stub (requires initialization) |
-| `scheduler-stop` | Stub (requires initialization) |
+| `scheduler-start` | Starts the CPU clock thread |
+| `scheduler-stop` | Stops the clock thread and prints the tick count |
 | `report-util` | Stub (requires initialization) |
 | `clear` | Clears console via `system("clear"/"cls")`, re-prints header |
-| `exit` | Sets `Emulator::is_app_alive = false`, exits loop |
+| `exit` | Stops the clock, then exits the loop |
 
 Unknown input prints `Command not recognized. Please try again.` Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits.
 
@@ -60,12 +60,14 @@ include/
   Emulator.h       # liveness state + loaded configuration
   Instruction.h    # random program instructions (Op, Instruction, Program)
   Process.h        # process entity + single-step execution
+  Scheduler.h      # CPU clock thread + cycle counter
 src/
   main.cpp            # owns Emulator, runs CommandHandler
   CommandHandler.cpp  # command parsing, gating, and dispatch
   Config.cpp          # config.txt parsing and validation
   Instruction.cpp     # seeded instruction generator + static size
   Process.cpp         # flattening, step dispatch, FOR frame stack
+  Scheduler.cpp       # start/stop lifecycle, throttled tick loop
   AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
 config.txt            # sample configuration
 CMakeLists.txt

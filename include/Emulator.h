@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Config.h"
+#include "Scheduler.h"
 
 #include <optional>
 #include <stdexcept>
@@ -22,6 +23,7 @@ public:
     /// Signals shutdown; loop exits on next iteration check.
     void exit_app()
     {
+        scheduler_.stop();
         is_app_alive = false;
     }
 
@@ -52,6 +54,17 @@ public:
         return *config_;
     }
 
+    Scheduler &scheduler() noexcept
+    {
+        return scheduler_;
+    }
+
+    const Scheduler &scheduler() const noexcept
+    {
+        return scheduler_;
+    }
+
 private:
     std::optional<Config> config_;
+    Scheduler scheduler_;
 };
