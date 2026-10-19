@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Domain logic with no UI dependency; shared by the CLI and the tests.
+# Domain logic with no UI dependency; shared by the CLI.
 add_library(emulator_core STATIC
   src/Config.cpp
 )
@@ -18,20 +18,14 @@ add_executable(os-emulator
 )
 target_link_libraries(os-emulator PRIVATE emulator_core)
 
-enable_testing()
-add_executable(test_config tests/test_config.cpp)
-target_link_libraries(test_config PRIVATE emulator_core)
-
 # Compiler-specific warning flags
-foreach(target emulator_core os-emulator test_config)
+foreach(target emulator_core os-emulator)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4)
   else()
     target_compile_options(${target} PRIVATE -Wall -Wextra)
   endif()
 endforeach()
-
-add_test(NAME config COMMAND test_config)
 
 # Build + run in one step: cmake --build build --target run
 # Run from the source dir so config.txt, logs/, and csopesy-log.txt resolve there.

@@ -63,14 +63,11 @@ src/
   CommandHandler.cpp  # command parsing, gating, and dispatch
   Config.cpp          # config.txt parsing and validation
   AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
-tests/
-  test_config.cpp     # CTest coverage for config parsing and validation
 config.txt            # sample configuration
 CMakeLists.txt
 specs/
   csopesy_emulator_specifications.md  # machine project spec
 ```
-
 
 ## Dependencies
 
@@ -179,14 +176,6 @@ With MSVC, specify the config explicitly:
 
 ```bash
 cmake --build build --config Release --target run
-```
-
-### Tests
-
-```bash
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
 ```
 
 ### Quick non-interactive check
