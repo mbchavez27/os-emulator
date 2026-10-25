@@ -6,7 +6,7 @@ CSOPESY command-line OS emulator. MCO1 is being built phase by phase.
 
 Interactive REPL with validated configuration loading, FCFS / round-robin scheduling, and process
 reports. `initialize` reads `config.txt`; until it succeeds, every command except
-`initialize` and `exit` is rejected. Process creation and screen attachment commands
+`initialize` and `exit` is rejected. Manual process creation and screen attachment commands
 are not implemented yet.
 
 Recognized commands:
@@ -16,11 +16,11 @@ Recognized commands:
 | `initialize` | Loads and validates `config.txt` |
 | `screen -ls` | Prints CPU utilization, core availability, and running/finished process rows |
 | Other `screen` commands | Stub (requires initialization) |
-| `scheduler-start` | Starts the CPU clock, dispatch, and worker threads |
-| `scheduler-stop` | Stops the clock thread and prints the tick count |
+| `scheduler-start` | Starts dummy process generation and CPU threads if needed |
+| `scheduler-stop` | Stops generation; queued and running processes continue to completion |
 | `report-util` | Saves the same report format to `csopesy-log.txt`, replacing the previous report |
 | `clear` | Clears console via `system("clear"/"cls")`, re-prints header |
-| `exit` | Stops the clock, then exits the loop |
+| `exit` | Stops generation and all CPU threads, then exits the loop |
 
 Unknown input prints `Command not recognized. Please try again.` Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits.
 
@@ -38,6 +38,18 @@ to the back of the ready queue with its program position intact. Sleeping releas
 the core, and waking starts a fresh quantum on the next dispatch. RR spaces
 instructions within a time slice by at least one tick when `delay-per-exec` is
 zero; execution delays are interrupted at quantum expiry so another process can run.
+
+`scheduler-start` creates one process per `batch-process-freq` CPU ticks, beginning
+after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,
+`p99`, `p100`, ...); IDs and names continue across stop/start cycles. Programs use
+the configured instruction bounds and their process ID as the generator seed.
+Starting twice keeps the original generation schedule. `scheduler-stop` stops
+creation synchronously and leaves the CPU running so existing work can finish.
+Restarting generation waits a fresh interval and keeps process history.
+
+To see generated processes, enter `initialize`, then `scheduler-start`, wait at
+least one batch interval, and enter `screen -ls`. Use `scheduler-stop` to stop
+adding work; subsequent reports show the remaining work progressing to completion.
 
 ## Configuration (`config.txt`)
 
@@ -226,7 +238,8 @@ Windows (PowerShell):
 
 The build includes scheduler/report checks covering idle, partial, and full
 utilization, live snapshots, report commands, RR rotation, sleep/wake budgets,
-stop/resume, and FCFS/RR output comparisons on identical seeded programs. Run them with:
+stop/resume, FCFS/RR output comparisons on identical seeded programs, and dummy
+generation cadence, naming, bounds, restarts, and draining after generation stops. Run them with:
 
 ```bash
 ctest --test-dir build -C Debug --output-on-failure

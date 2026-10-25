@@ -1,6 +1,7 @@
 #include "Scheduler.h"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -13,6 +14,11 @@ Scheduler::~Scheduler()
 void Scheduler::start(const Config &config)
 {
     std::lock_guard<std::mutex> lifecycle(lifecycleMutex_);
+    startLocked(config);
+}
+
+void Scheduler::startLocked(const Config &config)
+{
     if (running_.load(std::memory_order_acquire))
     {
         return;
@@ -52,6 +58,8 @@ void Scheduler::stop()
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        generationEnabled_ = false;
+        generationAccumulator_ = 0;
         running_.store(false, std::memory_order_release);
     }
     cv_.notify_all();
@@ -122,6 +130,37 @@ bool Scheduler::isRunning() const noexcept
     return running_.load(std::memory_order_acquire);
 }
 
+bool Scheduler::startGeneration(const Config &config)
+{
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex_);
+    if (config.batchProcessFreq == 0 || config.minIns == 0 || config.minIns > config.maxIns)
+    {
+        throw std::invalid_argument("Generation requires batch-process-freq > 0 and 1 <= min-ins <= max-ins");
+    }
+    startLocked(config);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (generationEnabled_)
+    {
+        return false;
+    }
+    generationConfig_ = config;
+    generationLastCycle_ = cycles_.load(std::memory_order_relaxed);
+    generationAccumulator_ = 0;
+    generationEnabled_ = true;
+    cv_.notify_all();
+    return true;
+}
+
+bool Scheduler::stopGeneration()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const bool wasEnabled = generationEnabled_;
+    generationEnabled_ = false;
+    generationAccumulator_ = 0;
+    return wasEnabled;
+}
+
 std::uint64_t Scheduler::cycleCount() const noexcept
 {
     return cycles_.load(std::memory_order_relaxed);
@@ -140,10 +179,17 @@ void Scheduler::submitProcess(std::unique_ptr<Process> process)
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
+    enqueueProcessLocked(std::move(process));
+    cv_.notify_all();
+}
+
+void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
+{
+    const std::uint64_t nextId = static_cast<std::uint64_t>(process->id()) + 1;
     const std::size_t index = processes_.size();
     processes_.push_back(std::move(process));
     ready_.push_back(index);
-    cv_.notify_all();
+    nextGeneratedNumber_ = std::max(nextGeneratedNumber_, nextId);
 }
 
 std::vector<ProcessView> Scheduler::snapshot() const
@@ -181,10 +227,7 @@ void Scheduler::tickLoop()
     while (running_.load(std::memory_order_acquire))
     {
         cycles_.fetch_add(1, std::memory_order_relaxed);
-        if (schedulerType_ == SchedulerType::RR)
-        {
-            cv_.notify_all();
-        }
+        cv_.notify_all();
         std::this_thread::sleep_for(kCycleInterval);
     }
 }
@@ -200,7 +243,7 @@ void Scheduler::dispatchLoop()
         // sleeper reaping when no process is ready.
         cv_.wait_for(lock, kCycleInterval, [this, previousCycle] {
             return !running_.load(std::memory_order_acquire) || canDispatchLocked() ||
-                   (schedulerType_ == SchedulerType::RR &&
+                   ((schedulerType_ == SchedulerType::RR || generationEnabled_) &&
                     cycles_.load(std::memory_order_relaxed) != previousCycle);
         });
 
@@ -210,6 +253,7 @@ void Scheduler::dispatchLoop()
         }
 
         reapSleepersLocked();
+        generateProcessesLocked();
         switch (schedulerType_)
         {
         case SchedulerType::FCFS:
@@ -325,6 +369,38 @@ void Scheduler::reapSleepersLocked()
             ready_.push_back(it->processIndex);
         }
         it = sleeping_.erase(it);
+    }
+}
+
+void Scheduler::generateProcessesLocked()
+{
+    if (!generationEnabled_)
+    {
+        return;
+    }
+    const std::uint64_t now = cycles_.load(std::memory_order_relaxed);
+    generationAccumulator_ += now - generationLastCycle_;
+    generationLastCycle_ = now;
+    while (generationAccumulator_ >= generationConfig_.batchProcessFreq)
+    {
+        if (nextGeneratedNumber_ > std::numeric_limits<std::uint32_t>::max())
+        {
+            generationEnabled_ = false;
+            return;
+        }
+        const std::string name = (nextGeneratedNumber_ < 10 ? "p0" : "p") +
+                                 std::to_string(nextGeneratedNumber_);
+        if (std::any_of(processes_.begin(), processes_.end(), [&](const auto &process) {
+                return process->name() == name;
+            }))
+        {
+            ++nextGeneratedNumber_;
+            continue;
+        }
+        const auto id = static_cast<std::uint32_t>(nextGeneratedNumber_);
+        enqueueProcessLocked(std::make_unique<Process>(
+            id, name, generateProgram(generationConfig_, name, id)));
+        generationAccumulator_ -= generationConfig_.batchProcessFreq;
     }
 }
 

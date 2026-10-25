@@ -133,7 +133,9 @@ int main()
         check(buildProcessReport({4, finished}).find("Finished 32 / 32") != std::string::npos,
               "Finished rows must show total / total");
 
-        std::istringstream commands("initialize\n  screen\t-ls  \nreport-util\nexit\n");
+        std::istringstream commands(
+            "scheduler-start\ninitialize\n  screen\t-ls  \nreport-util\n"
+            "scheduler-stop\nscheduler-start\nscheduler-start\nscheduler-stop\nscheduler-stop\nexit\n");
         std::ostringstream output;
         auto *previousInput = std::cin.rdbuf(commands.rdbuf());
         auto *previousOutput = std::cout.rdbuf(output.rdbuf());
@@ -143,6 +145,14 @@ int main()
         const std::string expected = buildProcessReport({
             static_cast<std::size_t>(emulator.config().numCpu), finished});
         check(output.str().find(expected) != std::string::npos, "screen -ls did not print the report");
+        check(output.str().find("System not yet initialized.") != std::string::npos,
+              "scheduler-start was accepted before initialize");
+        check(output.str().find("Process generation started.") != std::string::npos &&
+                  output.str().find("Process generation is already running.") != std::string::npos,
+              "CLI start commands did not control generation");
+        check(output.str().find("Process generation stopped. Existing processes will continue running.") != std::string::npos &&
+                  output.str().find("Process generation is not running.") != std::string::npos,
+              "CLI stop commands did not control generation");
         std::ifstream file("csopesy-log.txt");
         check(file.is_open(), "report-util did not create csopesy-log.txt");
         const std::string saved{std::istreambuf_iterator<char>(file), {}};

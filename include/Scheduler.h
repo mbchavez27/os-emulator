@@ -48,7 +48,7 @@ struct ProcessView
  *    instruction at a time. Cores still overlap during the delay spin and the
  *    sleep waits. Per-core locks would allow parallel stepping but violate the
  *    one-mutex rule.
- *  - lifecycleMutex_ serializes start()/stop() and the thread handles only.
+ *  - lifecycleMutex_ serializes CPU start/stop and enabling generation.
  *
  * FCFS runs to completion unless a process sleeps. Round-robin requeues an
  * unfinished process when its per-core CPU-cycle quantum expires.
@@ -69,6 +69,14 @@ public:
 
     /// Stops and joins every thread. Safe when not running.
     void stop();
+
+    /// Enables dummy process creation and starts CPU threads if needed.
+    /// Returns false if generation is already enabled, without resetting it.
+    bool startGeneration(const Config &config);
+
+    /// Stops creation synchronously; queued and running processes keep executing.
+    /// Returns false if generation was already disabled.
+    bool stopGeneration();
 
     bool isRunning() const noexcept;
 
@@ -99,11 +107,14 @@ private:
     };
 
     void tickLoop();
+    void startLocked(const Config &config);
     void dispatchLoop();
     void workerLoop(std::size_t core);
     void delayForExec(std::uint64_t quantumEndCycle);
 
     void reapSleepersLocked();
+    void generateProcessesLocked();
+    void enqueueProcessLocked(std::unique_ptr<Process> process);
     void assignReadyLocked();
     bool canDispatchLocked() const;
 
@@ -121,6 +132,11 @@ private:
     std::uint32_t delayPerExec_ = 0;
     SchedulerType schedulerType_ = SchedulerType::FCFS;
     std::uint32_t quantumCycles_ = 0;
+    bool generationEnabled_ = false;
+    Config generationConfig_;
+    std::uint64_t generationLastCycle_ = 0;
+    std::uint64_t generationAccumulator_ = 0;
+    std::uint64_t nextGeneratedNumber_ = 1;
     std::vector<CoreState> cores_;
     std::deque<std::size_t> ready_;
     std::vector<SleepEntry> sleeping_;

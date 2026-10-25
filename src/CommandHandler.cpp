@@ -104,27 +104,24 @@ void CommandHandler::run()
         }
         else if (cmd == "scheduler-start")
         {
-            if (emulator.scheduler().isRunning())
+            if (emulator.scheduler().startGeneration(emulator.config()))
             {
-                std::cout << "Scheduler already running.\n\n";
+                std::cout << "Process generation started.\n\n";
             }
             else
             {
-                emulator.scheduler().start(emulator.config());
-                std::cout << "Scheduler started.\n\n";
+                std::cout << "Process generation is already running.\n\n";
             }
         }
         else if (cmd == "scheduler-stop")
         {
-            if (!emulator.scheduler().isRunning())
+            if (emulator.scheduler().stopGeneration())
             {
-                std::cout << "Scheduler is not running.\n\n";
+                std::cout << "Process generation stopped. Existing processes will continue running.\n\n";
             }
             else
             {
-                emulator.scheduler().stop();
-                std::cout << "Scheduler stopped after "
-                          << emulator.scheduler().cycleCount() << " CPU cycles.\n\n";
+                std::cout << "Process generation is not running.\n\n";
             }
         }
         else if (cmd == "report-util")
