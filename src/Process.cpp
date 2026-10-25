@@ -1,4 +1,4 @@
-#include "Process.h"
+#include "EmulatorProcess.h"
 
 #include <limits>
 #include <stdexcept>
@@ -77,6 +77,11 @@ std::uint32_t Process::id() const noexcept
 const std::string &Process::name() const noexcept
 {
     return name_;
+}
+
+std::chrono::system_clock::time_point Process::startedAt() const noexcept
+{
+    return startedAt_;
 }
 
 ProcessState Process::state() const noexcept

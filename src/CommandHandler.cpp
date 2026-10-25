@@ -2,7 +2,10 @@
 #include "Emulator.h"
 #include "AsciiArt.h"
 #include "ConsoleColors.h"
+#include "ProcessReport.h"
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <cstdlib>
@@ -84,7 +87,20 @@ void CommandHandler::run()
         }
         else if (cmd == "screen")
         {
-            std::cout << "screen command recognized. Doing something.\n\n";
+            std::istringstream arguments(line.substr(first_non_space));
+            std::string subcommand;
+            std::string extra;
+            arguments >> cmd >> subcommand;
+            if (subcommand == "-ls" && !(arguments >> extra))
+            {
+                std::cout << buildProcessReport({
+                    static_cast<std::size_t>(emulator.config().numCpu),
+                    emulator.scheduler().snapshot()});
+            }
+            else
+            {
+                std::cout << "screen command recognized. Doing something.\n\n";
+            }
         }
         else if (cmd == "scheduler-start")
         {
@@ -113,8 +129,20 @@ void CommandHandler::run()
         }
         else if (cmd == "report-util")
         {
-            std::cout << "report-util command recognized. Doing something.\n";
-            std::cout << "\n";
+            const std::string report = buildProcessReport({
+                static_cast<std::size_t>(emulator.config().numCpu),
+                emulator.scheduler().snapshot()});
+            std::ofstream file("csopesy-log.txt");
+            file << report;
+            file.close();
+            if (file)
+            {
+                std::cout << "Report saved to csopesy-log.txt.\n\n";
+            }
+            else
+            {
+                std::cout << "Failed to write csopesy-log.txt.\n\n";
+            }
         }
         else if (cmd == "clear")
         {

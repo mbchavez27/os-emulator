@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Config.h"
-#include "Process.h"
+#include "EmulatorProcess.h"
 
 #include <atomic>
 #include <chrono>
@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -27,6 +28,8 @@ struct ProcessView
     std::uint8_t sleepTicksRemaining = 0;
     std::vector<std::string> logs;
     std::map<std::string, std::uint16_t> variables;
+    std::chrono::system_clock::time_point startedAt;
+    std::optional<std::size_t> core; ///< Unassigned for ready, sleeping, or finished processes.
 };
 
 /**

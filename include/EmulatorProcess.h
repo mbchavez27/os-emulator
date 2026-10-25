@@ -2,6 +2,7 @@
 
 #include "Instruction.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -42,6 +43,7 @@ public:
 
     std::uint32_t id() const noexcept;
     const std::string &name() const noexcept;
+    std::chrono::system_clock::time_point startedAt() const noexcept;
     ProcessState state() const noexcept;
     bool isFinished() const noexcept;
     bool isSleeping() const noexcept;
@@ -84,6 +86,7 @@ private:
 
     std::uint32_t id_;
     std::string name_;
+    std::chrono::system_clock::time_point startedAt_ = std::chrono::system_clock::now();
     ProcessState state_ = ProcessState::READY;
 
     std::vector<Instruction> code_;         ///< Pre-order flattened instructions.

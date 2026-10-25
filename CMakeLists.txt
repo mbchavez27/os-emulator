@@ -12,6 +12,7 @@ add_library(emulator_core STATIC
   src/Config.cpp
   src/Instruction.cpp
   src/Process.cpp
+  src/ProcessReport.cpp
   src/Scheduler.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -24,8 +25,28 @@ add_executable(os-emulator
 )
 target_link_libraries(os-emulator PRIVATE emulator_core)
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(scheduler-report-check
+    checks/SchedulerReportCheck.cpp
+    src/CommandHandler.cpp
+    src/AsciiArt.cpp
+  )
+  target_link_libraries(scheduler-report-check PRIVATE emulator_core)
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check)
+  configure_file(config.txt report-check/config.txt COPYONLY)
+  add_test(NAME scheduler-report COMMAND scheduler-report-check)
+  set_tests_properties(scheduler-report PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check
+  )
+endif()
+
 # Compiler-specific warning flags
-foreach(target emulator_core os-emulator)
+set(warning_targets emulator_core os-emulator)
+if(BUILD_TESTING)
+  list(APPEND warning_targets scheduler-report-check)
+endif()
+foreach(target ${warning_targets})
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4)
   else()

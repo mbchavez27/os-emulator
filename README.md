@@ -1,27 +1,35 @@
 # os-emulator
 
-CSOPESY command-line OS emulator. MCO1 is being built phase by phase; configuration
-loading is implemented.
+CSOPESY command-line OS emulator. MCO1 is being built phase by phase.
 
 ## What it is right now
 
-Interactive REPL with validated configuration loading. `initialize` reads `config.txt`;
-until it succeeds, every command except `initialize` and `exit` is rejected. Scheduling,
-processes, and the screen multiplexer are not implemented yet.
+Interactive REPL with validated configuration loading, an FCFS scheduler, and process
+reports. `initialize` reads `config.txt`; until it succeeds, every command except
+`initialize` and `exit` is rejected. Process creation and screen attachment commands
+are not implemented yet.
 
 Recognized commands:
 
 | Command | Current behavior |
 | --- | --- |
 | `initialize` | Loads and validates `config.txt` |
-| `screen` | Stub (requires initialization) |
+| `screen -ls` | Prints CPU utilization, core availability, and running/finished process rows |
+| Other `screen` commands | Stub (requires initialization) |
 | `scheduler-start` | Starts the CPU clock, dispatch, and worker threads |
 | `scheduler-stop` | Stops the clock thread and prints the tick count |
-| `report-util` | Stub (requires initialization) |
+| `report-util` | Saves the same report format to `csopesy-log.txt`, replacing the previous report |
 | `clear` | Clears console via `system("clear"/"cls")`, re-prints header |
 | `exit` | Stops the clock, then exits the loop |
 
 Unknown input prints `Command not recognized. Please try again.` Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits.
+
+Both reports use one formatter over a copied scheduler snapshot. Utilization is
+assigned cores / configured cores; available cores are configured cores minus
+assigned cores. Ready and sleeping processes appear in the running section with
+`Core: --`. Timestamps record process creation in local time; finished rows show
+`Finished` and total / total. Separate commands capture separate moments while
+processes advance; formatting the same snapshot always produces identical output.
 
 ## Configuration (`config.txt`)
 
@@ -59,7 +67,8 @@ include/
   ConsoleColors.h  # ANSI color constants (header-only, no build change)
   Emulator.h       # liveness state + loaded configuration
   Instruction.h    # random program instructions (Op, Instruction, Program)
-  Process.h        # process entity + single-step execution
+  EmulatorProcess.h # process entity + single-step execution (avoids Windows process.h)
+  ProcessReport.h  # shared snapshot report formatter
   Scheduler.h      # CPU clock thread + cycle counter
 src/
   main.cpp            # owns Emulator, runs CommandHandler
@@ -67,6 +76,7 @@ src/
   Config.cpp          # config.txt parsing and validation
   Instruction.cpp     # seeded instruction generator + static size
   Process.cpp         # flattening, step dispatch, FOR frame stack
+  ProcessReport.cpp   # CPU utilization and process table formatting
   Scheduler.cpp       # start/stop lifecycle, throttled tick loop
   AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
 config.txt            # sample configuration
@@ -204,4 +214,11 @@ Windows (PowerShell):
 
 ```powershell
 "initialize", "screen", "foo", "clear", "exit" | .\build\Debug\os-emulator.exe
+```
+
+The build includes a scheduler/report self-check covering idle, partial, and full
+utilization, live snapshot consistency, and both report commands. Run it with:
+
+```bash
+ctest --test-dir build -C Debug --output-on-failure
 ```

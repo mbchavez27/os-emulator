@@ -154,7 +154,15 @@ std::vector<ProcessView> Scheduler::snapshot() const
         view.sleepTicksRemaining = process->sleepTicksRemaining();
         view.logs = process->logs();
         view.variables = process->variables();
+        view.startedAt = process->startedAt();
         views.push_back(std::move(view));
+    }
+    for (std::size_t core = 0; core < cores_.size(); ++core)
+    {
+        if (cores_[core].busy)
+        {
+            views[cores_[core].processIndex].core = core;
+        }
     }
     return views;
 }
