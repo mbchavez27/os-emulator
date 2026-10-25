@@ -17,10 +17,16 @@ void Scheduler::start(const Config &config)
     {
         return;
     }
+    if (config.scheduler == SchedulerType::RR && config.quantumCycles == 0)
+    {
+        throw std::invalid_argument("Round-robin requires quantum-cycles > 0");
+    }
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
         delayPerExec_ = config.delayPerExec;
+        schedulerType_ = config.scheduler;
+        quantumCycles_ = config.quantumCycles;
         cores_.assign(static_cast<std::size_t>(config.numCpu), CoreState{});
     }
 
@@ -44,7 +50,10 @@ void Scheduler::stop()
     const bool hadThreads = clockThread_.joinable() || dispatchThread_.joinable() ||
                             !workerThreads_.empty();
 
-    running_.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        running_.store(false, std::memory_order_release);
+    }
     cv_.notify_all();
 
     if (clockThread_.joinable())
@@ -172,6 +181,10 @@ void Scheduler::tickLoop()
     while (running_.load(std::memory_order_acquire))
     {
         cycles_.fetch_add(1, std::memory_order_relaxed);
+        if (schedulerType_ == SchedulerType::RR)
+        {
+            cv_.notify_all();
+        }
         std::this_thread::sleep_for(kCycleInterval);
     }
 }
@@ -182,10 +195,13 @@ void Scheduler::dispatchLoop()
 
     while (running_.load(std::memory_order_acquire))
     {
+        const std::uint64_t previousCycle = cycles_.load(std::memory_order_relaxed);
         // Block until there is dispatchable work; the timeout still drives
         // sleeper reaping when no process is ready.
-        cv_.wait_for(lock, kCycleInterval, [this] {
-            return !running_.load(std::memory_order_acquire) || canDispatchLocked();
+        cv_.wait_for(lock, kCycleInterval, [this, previousCycle] {
+            return !running_.load(std::memory_order_acquire) || canDispatchLocked() ||
+                   (schedulerType_ == SchedulerType::RR &&
+                    cycles_.load(std::memory_order_relaxed) != previousCycle);
         });
 
         if (!running_.load(std::memory_order_acquire))
@@ -194,6 +210,23 @@ void Scheduler::dispatchLoop()
         }
 
         reapSleepersLocked();
+        switch (schedulerType_)
+        {
+        case SchedulerType::FCFS:
+            break;
+        case SchedulerType::RR:
+            for (CoreState &core : cores_)
+            {
+                if (core.busy && core.quantumEndCycle != 0 &&
+                    cycles_.load(std::memory_order_relaxed) >= core.quantumEndCycle)
+                {
+                    processes_[core.processIndex]->markReady();
+                    ready_.push_back(core.processIndex);
+                    core = CoreState{};
+                }
+            }
+            break;
+        }
         assignReadyLocked();
         cv_.notify_all();
     }
@@ -203,65 +236,67 @@ void Scheduler::workerLoop(std::size_t core)
 {
     while (true)
     {
-        Process *process = nullptr;
-        std::size_t index = 0;
+        StepOutcome outcome;
+        std::uint64_t quantumEndCycle = 0;
 
         {
             std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait(lock, [this, core] {
                 return !running_.load(std::memory_order_acquire) ||
-                       cores_[core].busy;
+                       (cores_[core].busy &&
+                        (schedulerType_ == SchedulerType::FCFS ||
+                         cores_[core].quantumEndCycle == 0 ||
+                         cycles_.load(std::memory_order_relaxed) < cores_[core].quantumEndCycle));
             });
             if (!running_.load(std::memory_order_acquire))
             {
                 break;
             }
-            index = cores_[core].processIndex;
-            process = processes_[index].get(); // capture under the lock
+            const std::size_t index = cores_[core].processIndex;
+            Process *process = processes_[index].get();
+            if (schedulerType_ == SchedulerType::RR && cores_[core].quantumEndCycle == 0)
+            {
+                cores_[core].quantumEndCycle = cycles_.load(std::memory_order_relaxed) + quantumCycles_;
+            }
+            quantumEndCycle = cores_[core].quantumEndCycle;
+            outcome = process->step();
+            if (outcome == StepOutcome::SLEEPING)
+            {
+                sleeping_.push_back(
+                    SleepEntry{index,
+                               cycles_.load(std::memory_order_relaxed) +
+                                   process->sleepTicksRemaining()});
+                cores_[core] = CoreState{};
+            }
+            else if (outcome == StepOutcome::FINISHED)
+            {
+                cores_[core] = CoreState{};
+            }
         }
-
-        while (running_.load(std::memory_order_acquire))
+        cv_.notify_all();
+        if (outcome == StepOutcome::EXECUTED)
         {
-            StepOutcome outcome = StepOutcome::EXECUTED;
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                outcome = process->step();
-                if (outcome == StepOutcome::SLEEPING)
-                {
-                    sleeping_.push_back(
-                        SleepEntry{index,
-                                   cycles_.load(std::memory_order_relaxed) +
-                                       process->sleepTicksRemaining()});
-                    cores_[core] = CoreState{};
-                }
-                else if (outcome == StepOutcome::FINISHED)
-                {
-                    cores_[core] = CoreState{};
-                }
-            }
-
-            cv_.notify_all();
-
-            if (outcome != StepOutcome::EXECUTED)
-            {
-                break;
-            }
-
-            delayForExec(); // busy-wait outside the lock
+            delayForExec(quantumEndCycle); // busy-wait outside the lock
         }
     }
 }
 
-void Scheduler::delayForExec()
+void Scheduler::delayForExec(std::uint64_t quantumEndCycle)
 {
-    if (delayPerExec_ == 0)
+    // Pace consecutive RR instructions by CPU ticks even when delay is zero.
+    const std::uint32_t delay = schedulerType_ == SchedulerType::RR
+                                    ? std::max(std::uint32_t{1}, delayPerExec_)
+                                    : delayPerExec_;
+    if (delay == 0)
     {
         return;
     }
 
     const std::uint64_t start = cycles_.load(std::memory_order_relaxed);
     while (running_.load(std::memory_order_acquire) &&
-           cycles_.load(std::memory_order_relaxed) - start < delayPerExec_)
+           cycles_.load(std::memory_order_relaxed) - start < delay &&
+           (schedulerType_ == SchedulerType::FCFS ||
+            cycles_.load(std::memory_order_relaxed) < quantumEndCycle))
     {
         std::this_thread::yield();
     }

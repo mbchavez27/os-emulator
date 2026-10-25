@@ -33,7 +33,7 @@ struct ProcessView
 };
 
 /**
- * @brief Non-preemptive FCFS scheduler: one clock thread, one dispatch thread,
+ * @brief FCFS / round-robin scheduler: one clock thread, one dispatch thread,
  *        and one worker thread per core.
  *
  * Locking strategy
@@ -50,8 +50,8 @@ struct ProcessView
  *    one-mutex rule.
  *  - lifecycleMutex_ serializes start()/stop() and the thread handles only.
  *
- * Non-preemptive: a process runs to completion unless it sleeps. Round-robin
- * and quantum-cycles are not handled yet.
+ * FCFS runs to completion unless a process sleeps. Round-robin requeues an
+ * unfinished process when its per-core CPU-cycle quantum expires.
  */
 class Scheduler
 {
@@ -78,7 +78,7 @@ public:
     /// Worker thread count from the last start(); 0 before start and after stop.
     std::size_t coreCount() const noexcept;
 
-    /// Adds a process to the FCFS ready queue. Safe while running.
+    /// Adds a process to the FIFO ready queue. Safe while running.
     void submitProcess(std::unique_ptr<Process> process);
 
     /// Immutable copy of every process, in submission order.
@@ -89,6 +89,7 @@ private:
     {
         bool busy = false;
         std::size_t processIndex = 0;
+        std::uint64_t quantumEndCycle = 0; ///< Starts when the worker begins its new slice.
     };
 
     struct SleepEntry
@@ -100,7 +101,7 @@ private:
     void tickLoop();
     void dispatchLoop();
     void workerLoop(std::size_t core);
-    void delayForExec();
+    void delayForExec(std::uint64_t quantumEndCycle);
 
     void reapSleepersLocked();
     void assignReadyLocked();
@@ -118,6 +119,8 @@ private:
     std::mutex lifecycleMutex_;
 
     std::uint32_t delayPerExec_ = 0;
+    SchedulerType schedulerType_ = SchedulerType::FCFS;
+    std::uint32_t quantumCycles_ = 0;
     std::vector<CoreState> cores_;
     std::deque<std::size_t> ready_;
     std::vector<SleepEntry> sleeping_;

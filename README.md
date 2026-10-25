@@ -4,7 +4,7 @@ CSOPESY command-line OS emulator. MCO1 is being built phase by phase.
 
 ## What it is right now
 
-Interactive REPL with validated configuration loading, an FCFS scheduler, and process
+Interactive REPL with validated configuration loading, FCFS / round-robin scheduling, and process
 reports. `initialize` reads `config.txt`; until it succeeds, every command except
 `initialize` and `exit` is rejected. Process creation and screen attachment commands
 are not implemented yet.
@@ -30,6 +30,14 @@ assigned cores. Ready and sleeping processes appear in the running section with
 `Core: --`. Timestamps record process creation in local time; finished rows show
 `Finished` and total / total. Separate commands capture separate moments while
 processes advance; formatting the same snapshot always produces identical output.
+
+`scheduler "fcfs"` keeps each process on its core until it finishes or sleeps;
+`quantum-cycles` has no effect. `scheduler "rr"` gives each dispatched process a
+fresh quantum, measured in CPU ticks from its first instruction. Expiry moves it
+to the back of the ready queue with its program position intact. Sleeping releases
+the core, and waking starts a fresh quantum on the next dispatch. RR spaces
+instructions within a time slice by at least one tick when `delay-per-exec` is
+zero; execution delays are interrupted at quantum expiry so another process can run.
 
 ## Configuration (`config.txt`)
 
@@ -216,8 +224,9 @@ Windows (PowerShell):
 "initialize", "screen", "foo", "clear", "exit" | .\build\Debug\os-emulator.exe
 ```
 
-The build includes a scheduler/report self-check covering idle, partial, and full
-utilization, live snapshot consistency, and both report commands. Run it with:
+The build includes scheduler/report checks covering idle, partial, and full
+utilization, live snapshots, report commands, RR rotation, sleep/wake budgets,
+stop/resume, and FCFS/RR output comparisons on identical seeded programs. Run them with:
 
 ```bash
 ctest --test-dir build -C Debug --output-on-failure
