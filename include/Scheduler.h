@@ -27,6 +27,7 @@ struct ProcessView
     std::size_t linesOfCode = 0;
     std::uint8_t sleepTicksRemaining = 0;
     std::vector<std::string> logs;
+    std::vector<LogStamp> logStamps; ///< Parallel to logs: execution time and core.
     std::map<std::string, std::uint16_t> variables;
     std::chrono::system_clock::time_point startedAt;
     std::optional<std::size_t> core; ///< Unassigned for ready, sleeping, or finished processes.

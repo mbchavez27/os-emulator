@@ -6,8 +6,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
+
+/// When and where one PRINT executed; parallel to Process::logs().
+struct LogStamp
+{
+    std::chrono::system_clock::time_point at;
+    std::optional<std::size_t> core; ///< Empty when stepped outside a core.
+};
 
 enum class ProcessState
 {
@@ -49,6 +57,9 @@ public:
     bool isSleeping() const noexcept;
 
     const std::vector<std::string> &logs() const noexcept;
+
+    /// Execution time and core of each entry in logs(), same length and order.
+    const std::vector<LogStamp> &logStamps() const noexcept;
     const std::map<std::string, std::uint16_t> &variables() const noexcept;
 
     /// 1-based source line most recently executed; 0 before the first step.
@@ -70,8 +81,10 @@ public:
      *
      * SLEEP executes, advances the program counter, and returns SLEEPING with
      * the loop frame stack intact. A finished process never mutates again.
+     *
+     * @param core Core executing the step; recorded on any log line it emits.
      */
-    StepOutcome step();
+    StepOutcome step(std::optional<std::size_t> core = std::nullopt);
 
     /// Decrements the SLEEP countdown; wakes or finishes the process at zero.
     void tickSleep();
@@ -99,6 +112,7 @@ private:
 
     std::map<std::string, std::uint16_t> variables_;
     std::vector<std::string> logs_;
+    std::vector<LogStamp> logStamps_; ///< Parallel: one stamp per logs_ entry.
 
     /// Returns the variable slot, inserting 0 when referenced for the first time.
     std::uint16_t &variableSlot(const std::string &name);
