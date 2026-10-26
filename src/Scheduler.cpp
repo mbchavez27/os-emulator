@@ -183,6 +183,32 @@ void Scheduler::submitProcess(std::unique_ptr<Process> process)
     cv_.notify_all();
 }
 
+std::optional<std::uint32_t> Scheduler::createProcess(const std::string &name, const Config &config)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (hasProcessNamedLocked(name))
+    {
+        return std::nullopt;
+    }
+    if (nextGeneratedNumber_ > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::overflow_error("Process ids are exhausted");
+    }
+
+    // Share the generator's id counter so manual and generated ids never collide.
+    const auto id = static_cast<std::uint32_t>(nextGeneratedNumber_);
+    enqueueProcessLocked(std::make_unique<Process>(id, name, generateProgram(config, name, id)));
+    cv_.notify_all();
+    return id;
+}
+
+bool Scheduler::hasProcessNamedLocked(const std::string &name) const
+{
+    return std::any_of(processes_.begin(), processes_.end(), [&](const auto &process) {
+        return process->name() == name;
+    });
+}
+
 void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
 {
     const std::uint64_t nextId = static_cast<std::uint64_t>(process->id()) + 1;
@@ -390,9 +416,7 @@ void Scheduler::generateProcessesLocked()
         }
         const std::string name = (nextGeneratedNumber_ < 10 ? "p0" : "p") +
                                  std::to_string(nextGeneratedNumber_);
-        if (std::any_of(processes_.begin(), processes_.end(), [&](const auto &process) {
-                return process->name() == name;
-            }))
+        if (hasProcessNamedLocked(name))
         {
             ++nextGeneratedNumber_;
             continue;

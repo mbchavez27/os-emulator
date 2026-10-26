@@ -89,6 +89,13 @@ public:
     /// Adds a process to the FIFO ready queue. Safe while running.
     void submitProcess(std::unique_ptr<Process> process);
 
+    /// Creates a process named `name` with a program generated from `config`
+    /// and enqueues it. Returns its id, or nullopt when the name is taken;
+    /// finished processes keep their names. The check and the insert happen
+    /// under one lock, so concurrent generation cannot claim the same name.
+    /// @throws std::overflow_error when process ids are exhausted.
+    std::optional<std::uint32_t> createProcess(const std::string &name, const Config &config);
+
     /// Immutable copy of every process, in submission order.
     std::vector<ProcessView> snapshot() const;
 
@@ -115,6 +122,7 @@ private:
     void reapSleepersLocked();
     void generateProcessesLocked();
     void enqueueProcessLocked(std::unique_ptr<Process> process);
+    bool hasProcessNamedLocked(const std::string &name) const;
     void assignReadyLocked();
     bool canDispatchLocked() const;
 
