@@ -104,6 +104,11 @@ const std::vector<std::string> &Process::logs() const noexcept
     return logs_;
 }
 
+const std::vector<LogStamp> &Process::logStamps() const noexcept
+{
+    return logStamps_;
+}
+
 const std::map<std::string, std::uint16_t> &Process::variables() const noexcept
 {
     return variables_;
@@ -150,7 +155,7 @@ void Process::markRunning()
     state_ = ProcessState::RUNNING;
 }
 
-StepOutcome Process::step()
+StepOutcome Process::step(std::optional<std::size_t> core)
 {
     if (state_ == ProcessState::FINISHED)
     {
@@ -185,6 +190,7 @@ StepOutcome Process::step()
                     line += std::to_string(variableSlot(*payload.variable));
                 }
                 logs_.push_back(std::move(line));
+                logStamps_.push_back(LogStamp{std::chrono::system_clock::now(), core});
             }
             else if constexpr (std::is_same_v<T, DeclareInstruction>)
             {

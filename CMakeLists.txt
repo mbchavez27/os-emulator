@@ -13,6 +13,7 @@ add_library(emulator_core STATIC
   src/Instruction.cpp
   src/Process.cpp
   src/ProcessReport.cpp
+  src/ProcessSmi.cpp
   src/Scheduler.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -33,6 +34,10 @@ if(BUILD_TESTING)
     src/AsciiArt.cpp
   )
   target_link_libraries(scheduler-report-check PRIVATE emulator_core)
+  add_executable(process-smi-check checks/ProcessSmiCheck.cpp)
+  target_link_libraries(process-smi-check PRIVATE emulator_core)
+  add_test(NAME process-smi COMMAND process-smi-check)
+  set_tests_properties(process-smi PROPERTIES TIMEOUT 45)
   add_executable(process-screen-check
     checks/ProcessScreenCheck.cpp
     src/CommandHandler.cpp
@@ -63,7 +68,7 @@ endif()
 # Compiler-specific warning flags
 set(warning_targets emulator_core os-emulator)
 if(BUILD_TESTING)
-  list(APPEND warning_targets scheduler-report-check process-screen-check scheduler-quantum-check scheduler-generation-check)
+  list(APPEND warning_targets scheduler-report-check process-smi-check process-screen-check scheduler-quantum-check scheduler-generation-check)
 endif()
 foreach(target ${warning_targets})
   if(MSVC)

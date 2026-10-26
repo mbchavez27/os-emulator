@@ -234,6 +234,7 @@ std::vector<ProcessView> Scheduler::snapshot() const
         view.linesOfCode = process->linesOfCode();
         view.sleepTicksRemaining = process->sleepTicksRemaining();
         view.logs = process->logs();
+        view.logStamps = process->logStamps();
         view.variables = process->variables();
         view.startedAt = process->startedAt();
         views.push_back(std::move(view));
@@ -329,7 +330,7 @@ void Scheduler::workerLoop(std::size_t core)
                 cores_[core].quantumEndCycle = cycles_.load(std::memory_order_relaxed) + quantumCycles_;
             }
             quantumEndCycle = cores_[core].quantumEndCycle;
-            outcome = process->step();
+            outcome = process->step(core);
             if (outcome == StepOutcome::SLEEPING)
             {
                 sleeping_.push_back(
