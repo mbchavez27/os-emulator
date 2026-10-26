@@ -97,6 +97,15 @@ int main()
         check(output.find("Unknown command 'scheduler-start'") != std::string::npos,
               "scheduler-start should be unknown inside the process screen");
 
+        // process-smi prints the attached process's status, not a placeholder.
+        check(output.find("not implemented") == std::string::npos,
+              "process-smi is still a placeholder");
+        check(output.find("Process name: myproc\nID: 1\nLogs:\n") != std::string::npos,
+              "process-smi did not print the name, ID, and Logs header");
+        check(output.find("Lines of code: ") != std::string::npos ||
+                  output.find("Finished!") != std::string::npos,
+              "process-smi did not print a progress block or Finished!");
+
         // Header is intact after the detach: once at startup, once after 'exit'.
         check(count(output, "Hello, Welcome to CSOPESY commandline!") == 2,
               "Header was not reprinted after detaching");

@@ -3,6 +3,8 @@
 #include "AsciiArt.h"
 #include "ConsoleColors.h"
 #include "ProcessReport.h"
+#include "ProcessSmi.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -78,8 +80,19 @@ void CommandHandler::run_process_screen(const std::string &name)
         }
         else if (input == "process-smi")
         {
-            // The status view is a separate ticket; the command is accepted here.
-            std::cout << "process-smi output is not implemented yet.\n\n";
+            // Copy the state under the scheduler lock, then print with no lock held.
+            const auto views = emulator.scheduler().snapshot();
+            const auto view = std::find_if(views.begin(), views.end(), [&](const ProcessView &candidate) {
+                return candidate.name == name;
+            });
+            if (view == views.end())
+            {
+                std::cout << "Process " << name << " not found.\n\n";
+            }
+            else
+            {
+                std::cout << buildProcessSmi(*view) << "\n";
+            }
         }
         else
         {
