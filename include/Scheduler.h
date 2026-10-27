@@ -150,6 +150,7 @@ private:
     std::uint64_t generationAccumulator_ = 0;
     std::uint64_t nextGeneratedNumber_ = 1;
     std::vector<CoreState> cores_;
+    std::vector<std::uint64_t> nextCoreExecutionCycles_; ///< Survives process reassignment.
     std::deque<std::size_t> ready_;
     std::vector<SleepEntry> sleeping_;
     std::vector<std::unique_ptr<Process>> processes_;

@@ -34,6 +34,7 @@ void Scheduler::startLocked(const Config &config)
         schedulerType_ = config.scheduler;
         quantumCycles_ = config.quantumCycles;
         cores_.assign(static_cast<std::size_t>(config.numCpu), CoreState{});
+        nextCoreExecutionCycles_.assign(cores_.size(), 0);
     }
 
     coreCount_.store(cores_.size(), std::memory_order_relaxed);
@@ -122,6 +123,7 @@ void Scheduler::stop()
 
     sleeping_.clear();
     cores_.clear();
+    nextCoreExecutionCycles_.clear();
     coreCount_.store(0, std::memory_order_relaxed);
 }
 
@@ -330,6 +332,7 @@ void Scheduler::workerLoop(std::size_t core)
             cv_.wait(lock, [this, core] {
                 return !running_.load(std::memory_order_acquire) ||
                        (cores_[core].busy &&
+                        cycles_.load(std::memory_order_relaxed) >= nextCoreExecutionCycles_[core] &&
                         (schedulerType_ == SchedulerType::FCFS ||
                          cores_[core].quantumEndCycle == 0 ||
                          cycles_.load(std::memory_order_relaxed) < cores_[core].quantumEndCycle));
@@ -346,6 +349,7 @@ void Scheduler::workerLoop(std::size_t core)
             }
             quantumEndCycle = cores_[core].quantumEndCycle;
             outcome = process->step(core);
+            nextCoreExecutionCycles_[core] = cycles_.load(std::memory_order_relaxed) + 1;
             if (outcome == StepOutcome::SLEEPING)
             {
                 sleeping_.push_back(
