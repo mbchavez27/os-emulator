@@ -249,6 +249,21 @@ std::vector<ProcessView> Scheduler::snapshot() const
     return views;
 }
 
+std::optional<ProcessView> Scheduler::findActiveProcessByName(const std::string &name) const
+{
+    const std::vector<ProcessView> processes = snapshot();
+    {
+        for (const ProcessView &process : processes)
+        {
+            if (process.name == name && process.state != ProcessState::FINISHED)
+            {
+                return process;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 void Scheduler::tickLoop()
 {
     while (running_.load(std::memory_order_acquire))

@@ -100,6 +100,9 @@ public:
     /// Immutable copy of every process, in submission order.
     std::vector<ProcessView> snapshot() const;
 
+    /// Returns a snapshot of the named process only if it exists and is unfinished
+    std::optional<ProcessView> findActiveProcessByName(const std::string &name) const;
+
 private:
     struct CoreState
     {
