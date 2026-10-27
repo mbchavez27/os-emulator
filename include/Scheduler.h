@@ -121,7 +121,7 @@ private:
     void startLocked(const Config &config);
     void dispatchLoop();
     void workerLoop(std::size_t core);
-    void delayForExec(std::uint64_t quantumEndCycle);
+    void delayForExec(std::uint64_t nextExecutionCycle, std::uint64_t quantumEndCycle);
 
     void reapSleepersLocked();
     void generateProcessesLocked();
@@ -154,6 +154,7 @@ private:
     std::deque<std::size_t> ready_;
     std::vector<SleepEntry> sleeping_;
     std::vector<std::unique_ptr<Process>> processes_;
+    std::vector<std::uint64_t> nextProcessExecutionCycles_; ///< Survives preemption and stop/resume.
 
     std::thread clockThread_;
     std::thread dispatchThread_;

@@ -33,11 +33,13 @@ processes advance; formatting the same snapshot always produces identical output
 
 `scheduler "fcfs"` keeps each process on its core until it finishes or sleeps;
 `quantum-cycles` has no effect. `scheduler "rr"` gives each dispatched process a
-fresh quantum, measured in CPU ticks from its first instruction. Expiry moves it
+fresh quantum, measured in CPU ticks from when its worker begins the slice. Expiry moves it
 to the back of the ready queue with its program position intact. Sleeping releases
 the core, and waking starts a fresh quantum on the next dispatch. RR spaces
 instructions within a time slice by at least one tick when `delay-per-exec` is
-zero; execution delays are interrupted at quantum expiry so another process can run.
+zero. Quantum expiry lets another process run, but each process keeps its next
+permitted execution tick across preemption, core changes, and CPU stop/resume.
+Time spent off-core counts toward the execution delay.
 
 `scheduler-start` creates one process per `batch-process-freq` CPU ticks, beginning
 after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,

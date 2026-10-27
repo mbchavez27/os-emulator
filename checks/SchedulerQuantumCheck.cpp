@@ -112,6 +112,31 @@ void checkTickPacing(const Config &config, const std::vector<Program> &programs)
     }
 }
 
+void checkExecutionDelay(const Config &config, std::size_t processCount)
+{
+    Program program;
+    program.instructions.assign(4, Instruction{PrintInstruction{"delayed", std::nullopt}});
+    Scheduler scheduler;
+    for (std::size_t i = 0; i < processCount; ++i)
+    {
+        scheduler.submitProcess(std::make_unique<Process>(
+            static_cast<std::uint32_t>(i + 1), "p" + std::to_string(i + 1), program));
+    }
+    scheduler.start(config);
+    const auto completed = finish(scheduler, [&](const auto &views) {
+        const auto ticks = scheduler.cycleCount();
+        for (const auto &view : views)
+        {
+            check(view.logs.size() <= 1 + ticks / config.delayPerExec,
+                  "Dispatch bypassed a process's execution delay");
+        }
+    });
+    for (const auto &view : completed)
+    {
+        check(view.logs == std::vector<std::string>(4, "delayed"), "Delayed workload lost or repeated output");
+    }
+}
+
 void compare(const std::vector<ProcessView> &expected, const std::vector<ProcessView> &actual)
 {
     check(actual.size() == expected.size(), "Processes were lost");
@@ -144,6 +169,21 @@ int main()
 {
     try
     {
+        for (const int cores : {1, 4})
+        {
+            Config delayed;
+            delayed.numCpu = cores;
+            delayed.scheduler = SchedulerType::RR;
+            delayed.quantumCycles = 1;
+            delayed.delayPerExec = 8;
+            checkExecutionDelay(delayed, 1);
+            checkExecutionDelay(delayed, cores + 1);
+            delayed.quantumCycles = 3;
+            checkExecutionDelay(delayed, cores + 1);
+            delayed.scheduler = SchedulerType::FCFS;
+            checkExecutionDelay(delayed, 1);
+        }
+
         Program print;
         print.instructions = {Instruction{PrintInstruction{"tick", std::nullopt}}};
         Program longPrint;
@@ -257,7 +297,7 @@ int main()
 
         config.numCpu = 2;
         config.quantumCycles = 1;
-        config.delayPerExec = 0;
+        config.delayPerExec = 8;
         Scheduler resumed;
         resumed.submitProcess(std::make_unique<Process>(1, "resume", increments(16)));
         resumed.start(config);
@@ -272,7 +312,10 @@ int main()
         check(!stopped.front().core, "Stopped scheduler retained a core assignment");
         check(stopped.front().state == ProcessState::READY, "Stopped process was not requeued");
         resumed.start(config);
-        check(finish(resumed).front().variables.at("x") == 16, "Restart lost program position");
+        check(finish(resumed, [&](const auto &views) {
+            check(views.front().currentLine <= 1 + resumed.cycleCount() / config.delayPerExec,
+                  "Restart bypassed the remaining execution delay");
+        }).front().variables.at("x") == 16, "Restart lost program position");
         resumed.stop();
         for (int attempt = 0; attempt < 32; ++attempt)
         {
