@@ -215,6 +215,7 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
 {
     const std::uint64_t nextId = static_cast<std::uint64_t>(process->id()) + 1;
     const std::size_t index = processes_.size();
+    nextProcessExecutionCycles_.resize(index + 1, 0);
     processes_.push_back(std::move(process));
     ready_.push_back(index);
     nextGeneratedNumber_ = std::max(nextGeneratedNumber_, nextId);
@@ -325,7 +326,6 @@ void Scheduler::workerLoop(std::size_t core)
     while (true)
     {
         StepOutcome outcome;
-        std::uint64_t quantumEndCycle = 0;
 
         {
             std::unique_lock<std::mutex> lock(mutex_);
@@ -347,9 +347,21 @@ void Scheduler::workerLoop(std::size_t core)
             {
                 cores_[core].quantumEndCycle = cycles_.load(std::memory_order_relaxed) + quantumCycles_;
             }
-            quantumEndCycle = cores_[core].quantumEndCycle;
+            const auto nextExecutionCycle = nextProcessExecutionCycles_[index];
+            if (cycles_.load(std::memory_order_relaxed) < nextExecutionCycle)
+            {
+                const auto quantumEndCycle = cores_[core].quantumEndCycle;
+                lock.unlock();
+                delayForExec(nextExecutionCycle, quantumEndCycle);
+                continue;
+            }
             outcome = process->step(core);
-            nextCoreExecutionCycles_[core] = cycles_.load(std::memory_order_relaxed) + 1;
+            const auto executedCycle = cycles_.load(std::memory_order_relaxed);
+            nextCoreExecutionCycles_[core] = executedCycle + 1;
+            if (outcome == StepOutcome::EXECUTED)
+            {
+                nextProcessExecutionCycles_[index] = executedCycle + delayPerExec_;
+            }
             if (outcome == StepOutcome::SLEEPING)
             {
                 sleeping_.push_back(
@@ -364,27 +376,13 @@ void Scheduler::workerLoop(std::size_t core)
             }
         }
         cv_.notify_all();
-        if (outcome == StepOutcome::EXECUTED)
-        {
-            delayForExec(quantumEndCycle); // busy-wait outside the lock
-        }
     }
 }
 
-void Scheduler::delayForExec(std::uint64_t quantumEndCycle)
+void Scheduler::delayForExec(std::uint64_t nextExecutionCycle, std::uint64_t quantumEndCycle)
 {
-    // Pace consecutive RR instructions by CPU ticks even when delay is zero.
-    const std::uint32_t delay = schedulerType_ == SchedulerType::RR
-                                    ? std::max(std::uint32_t{1}, delayPerExec_)
-                                    : delayPerExec_;
-    if (delay == 0)
-    {
-        return;
-    }
-
-    const std::uint64_t start = cycles_.load(std::memory_order_relaxed);
     while (running_.load(std::memory_order_acquire) &&
-           cycles_.load(std::memory_order_relaxed) - start < delay &&
+           cycles_.load(std::memory_order_relaxed) < nextExecutionCycle &&
            (schedulerType_ == SchedulerType::FCFS ||
             cycles_.load(std::memory_order_relaxed) < quantumEndCycle))
     {
