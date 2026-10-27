@@ -13,6 +13,7 @@ add_library(emulator_core STATIC
   src/Instruction.cpp
   src/Process.cpp
   src/ProcessReport.cpp
+  src/ProcessSmi.cpp
   src/Scheduler.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -33,6 +34,16 @@ if(BUILD_TESTING)
     src/AsciiArt.cpp
   )
   target_link_libraries(scheduler-report-check PRIVATE emulator_core)
+  add_executable(process-smi-check checks/ProcessSmiCheck.cpp)
+  target_link_libraries(process-smi-check PRIVATE emulator_core)
+  add_test(NAME process-smi COMMAND process-smi-check)
+  set_tests_properties(process-smi PROPERTIES TIMEOUT 45)
+  add_executable(process-screen-check
+    checks/ProcessScreenCheck.cpp
+    src/CommandHandler.cpp
+    src/AsciiArt.cpp
+  )
+  target_link_libraries(process-screen-check PRIVATE emulator_core)
   add_executable(scheduler-quantum-check checks/SchedulerQuantumCheck.cpp)
   target_link_libraries(scheduler-quantum-check PRIVATE emulator_core)
   add_test(NAME scheduler-quantum COMMAND scheduler-quantum-check)
@@ -47,12 +58,17 @@ if(BUILD_TESTING)
   set_tests_properties(scheduler-report PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check
   )
+  add_test(NAME process-screen COMMAND process-screen-check)
+  set_tests_properties(process-screen PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check
+    TIMEOUT 45
+  )
 endif()
 
 # Compiler-specific warning flags
 set(warning_targets emulator_core os-emulator)
 if(BUILD_TESTING)
-  list(APPEND warning_targets scheduler-report-check scheduler-quantum-check scheduler-generation-check)
+  list(APPEND warning_targets scheduler-report-check process-smi-check process-screen-check scheduler-quantum-check scheduler-generation-check)
 endif()
 foreach(target ${warning_targets})
   if(MSVC)

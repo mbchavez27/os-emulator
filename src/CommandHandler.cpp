@@ -3,6 +3,8 @@
 #include "AsciiArt.h"
 #include "ConsoleColors.h"
 #include "ProcessReport.h"
+#include "ProcessSmi.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -25,6 +27,83 @@ void CommandHandler::print_header()
     std::cout << console_colors::GREEN << "Hello, Welcome to CSOPESY commandline!" << console_colors::RESET << "\n";
     std::cout << console_colors::YELLOW << "Type 'exit' to quit, 'clear' to clear the screen\n\n";
     std::cout << "** IMPORTANT: Type 'initialize' to load config and start system **" << console_colors::RESET << "\n\n";
+}
+
+void CommandHandler::clear_screen()
+{
+    // Deliberate system() call: no portable C++ API for console clear
+#ifdef _WIN32
+    if (std::system("cls") != 0)
+    {
+        std::cout << "Failed to clear screen.\n";
+    }
+#else
+    if (std::system("clear") != 0)
+    {
+        std::cout << "Failed to clear screen.\n";
+    }
+#endif
+}
+
+void CommandHandler::run_process_screen(const std::string &name)
+{
+    clear_screen();
+    std::cout << "Process screen: " << name << "\n"
+              << "Type 'process-smi' for process information, 'exit' to return to the main menu.\n\n";
+
+    std::string line;
+    while (emulator.is_app_alive)
+    {
+        std::cout << "root:\\> " << std::flush;
+
+        if (!std::getline(std::cin, line))
+        {
+            // Detach on EOF; clearing the stream state lets an interactive
+            // console (Ctrl+Z) keep using the main menu. A closed pipe fails
+            // the main loop's next read, which ends the emulator as before.
+            std::cin.clear();
+            std::cout << "\n";
+            break;
+        }
+
+        const size_t first = line.find_first_not_of(" \t\r");
+        if (first == std::string::npos)
+        {
+            continue; // Ignore empty inputs
+        }
+        const size_t last = line.find_last_not_of(" \t\r");
+        const std::string input = line.substr(first, last - first + 1);
+
+        if (input == "exit")
+        {
+            break;
+        }
+        else if (input == "process-smi")
+        {
+            // Copy the state under the scheduler lock, then print with no lock held.
+            const auto views = emulator.scheduler().snapshot();
+            const auto view = std::find_if(views.begin(), views.end(), [&](const ProcessView &candidate) {
+                return candidate.name == name;
+            });
+            if (view == views.end())
+            {
+                std::cout << "Process " << name << " not found.\n\n";
+            }
+            else
+            {
+                std::cout << buildProcessSmi(*view) << "\n";
+            }
+        }
+        else
+        {
+            std::cout << "Unknown command '" << input
+                      << "'. Available commands: process-smi, exit\n\n";
+        }
+    }
+
+    // Detach: the process stays in the scheduler and keeps running.
+    clear_screen();
+    print_header();
 }
 
 void CommandHandler::run()
@@ -89,6 +168,7 @@ void CommandHandler::run()
         {
             std::istringstream arguments(line.substr(first_non_space));
             std::string subcommand;
+            std::string processName;
             std::string extra;
             arguments >> cmd >> subcommand;
             if (subcommand == "-ls" && !(arguments >> extra))
@@ -96,6 +176,23 @@ void CommandHandler::run()
                 std::cout << buildProcessReport({
                     static_cast<std::size_t>(emulator.config().numCpu),
                     emulator.scheduler().snapshot()});
+            }
+            else if (subcommand == "-s")
+            {
+                if (!(arguments >> processName) || (arguments >> extra))
+                {
+                    std::cout << "Usage: screen -s <process name>\n\n";
+                    continue;
+                }
+
+                // Processes only execute while the CPU threads run; start() is a no-op if they do.
+                emulator.scheduler().start(emulator.config());
+                if (!emulator.scheduler().createProcess(processName, emulator.config()))
+                {
+                    std::cout << "Process " << processName << " already exists.\n\n";
+                    continue;
+                }
+                run_process_screen(processName);
             }
             else
             {
@@ -143,19 +240,7 @@ void CommandHandler::run()
         }
         else if (cmd == "clear")
         {
-            // Deliberate system() call: no portable C++ API for console clear
-#ifdef _WIN32
-            if (std::system("cls") != 0)
-            {
-                std::cout << "Failed to clear screen.\n";
-            }
-#else
-            if (std::system("clear") != 0)
-            {
-                std::cout << "Failed to clear screen.\n";
-            }
-#endif
-
+            clear_screen();
             print_header();
         }
         else
