@@ -79,6 +79,9 @@ public:
     /// Returns false if generation was already disabled.
     bool stopGeneration();
 
+    /// Reports a background process-creation failure once, without allocating an error string.
+    bool takeGenerationFailure();
+
     bool isRunning() const noexcept;
 
     /// Completed CPU ticks; monotonic while running, frozen after stop().
@@ -145,6 +148,7 @@ private:
     SchedulerType schedulerType_ = SchedulerType::FCFS;
     std::uint32_t quantumCycles_ = 0;
     bool generationEnabled_ = false;
+    bool generationFailed_ = false;
     Config generationConfig_;
     std::uint64_t generationLastCycle_ = 0;
     std::uint64_t generationAccumulator_ = 0;

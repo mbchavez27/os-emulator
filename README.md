@@ -49,6 +49,11 @@ Starting twice keeps the original generation schedule. `scheduler-stop` stops
 creation synchronously and leaves the CPU running so existing work can finish.
 Restarting generation waits a fresh interval and keeps process history.
 
+Processes release their variable storage when they finish. Failed manual creation
+prints an error and returns to the main menu. Failed automatic creation stops
+generation and reports an error on the next main-menu command; existing processes
+continue running. `scheduler-start` can retry generation after the failure.
+
 To see generated processes, enter `initialize`, then `scheduler-start`, wait at
 least one batch interval, and enter `screen -ls`. Use `scheduler-stop` to stop
 adding work; subsequent reports show the remaining work progressing to completion.

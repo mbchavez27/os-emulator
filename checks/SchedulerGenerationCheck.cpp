@@ -129,6 +129,7 @@ int main()
             Program program;
             program.instructions.assign(16, Instruction{AddInstruction{
                 "x", Operand::variable("x"), Operand::literal(1)}});
+            program.instructions.push_back(Instruction{PrintInstruction{"x=", std::string{"x"}}});
             drain.submitProcess(std::make_unique<Process>(1000, "manual", program));
             drain.startGeneration(config);
             waitFor(drain, [](const auto &views) { return views.size() >= 3; });
@@ -142,7 +143,9 @@ int main()
                     return view.state == ProcessState::FINISHED;
                 });
             });
-            check(completed.front().variables.at("x") == 16, "Generation stop interrupted an existing process");
+            check(completed.front().logs == std::vector<std::string>{"x=16"},
+                  "Generation stop interrupted an existing process");
+            check(completed.front().variables.empty(), "Finished process retained its variables");
             check(drain.isRunning(), "Draining stopped the CPU threads");
         }
 

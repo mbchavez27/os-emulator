@@ -60,6 +60,7 @@ public:
 
     /// Execution time and core of each entry in logs(), same length and order.
     const std::vector<LogStamp> &logStamps() const noexcept;
+    /// Variable storage is released on completion; finished processes return an empty map.
     const std::map<std::string, std::uint16_t> &variables() const noexcept;
 
     /// 1-based source line most recently executed; 0 before the first step.
@@ -118,4 +119,5 @@ private:
     std::uint16_t &variableSlot(const std::string &name);
     std::uint16_t resolve(const Operand &operand);
     void advance();
+    void finish();
 };
