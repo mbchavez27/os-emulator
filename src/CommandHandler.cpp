@@ -194,6 +194,24 @@ void CommandHandler::run()
                 }
                 run_process_screen(processName);
             }
+            else if (subcommand == "-r" )
+            {
+                if (!(arguments >> processName) || (arguments >> extra))
+                {
+                    std::cout << "Usage: screen -r <process name>\n\n";
+                    continue;
+                }
+
+                const std::optional<ProcessView> process = emulator.scheduler().findActiveProcessByName(processName);
+
+                if (!process)
+                {
+                    std::cout << "Process " << processName << " not found.\n\n";
+                    continue;
+                }
+                
+                run_process_screen(processName);
+            } 
             else
             {
                 std::cout << "screen command recognized. Doing something.\n\n";
