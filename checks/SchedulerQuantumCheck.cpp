@@ -75,6 +75,43 @@ Program increments(std::size_t count)
     return program;
 }
 
+void checkTickPacing(const Config &config, const std::vector<Program> &programs)
+{
+    Scheduler scheduler;
+    std::uint32_t id = 0;
+    for (const auto &program : programs)
+    {
+        ++id;
+        scheduler.submitProcess(std::make_unique<Process>(id, "p" + std::to_string(id), program));
+    }
+    scheduler.start(config);
+    const auto completed = finish(scheduler, [&](const auto &views) {
+        // These fixtures have no loops, so the source line counts executed instructions.
+        std::size_t instructions = 0;
+        std::vector<std::size_t> printsPerCore(config.numCpu);
+        for (const auto &view : views)
+        {
+            instructions += view.currentLine;
+            for (const auto &stamp : view.logStamps)
+            {
+                check(stamp.core && *stamp.core < printsPerCore.size(), "PRINT has no valid core");
+                ++printsPerCore[*stamp.core];
+            }
+        }
+        // Read after the snapshot; allow one instruction in the initial tick.
+        const auto ticks = scheduler.cycleCount() + 1;
+        check(instructions <= ticks * scheduler.coreCount(), "Instructions exceeded the CPU tick budget");
+        for (const auto prints : printsPerCore)
+        {
+            check(prints <= ticks, "A core executed multiple PRINTs per CPU tick");
+        }
+    });
+    for (std::size_t i = 0; i < completed.size(); ++i)
+    {
+        check(completed[i].currentLine == programs[i].instructions.size(), "Paced workload lost instructions");
+    }
+}
+
 void compare(const std::vector<ProcessView> &expected, const std::vector<ProcessView> &actual)
 {
     check(actual.size() == expected.size(), "Processes were lost");
@@ -107,6 +144,26 @@ int main()
 {
     try
     {
+        Program print;
+        print.instructions = {Instruction{PrintInstruction{"tick", std::nullopt}}};
+        Program longPrint;
+        longPrint.instructions.assign(32, print.instructions.front());
+        Program yielding;
+        yielding.instructions = {Instruction{SleepInstruction{2}}, print.instructions.front()};
+        for (const auto type : {SchedulerType::FCFS, SchedulerType::RR})
+        {
+            for (const int cores : {1, 4})
+            {
+                Config pacing;
+                pacing.numCpu = cores;
+                pacing.scheduler = type;
+                pacing.quantumCycles = 1;
+                checkTickPacing(pacing, {longPrint});
+                checkTickPacing(pacing, std::vector<Program>(32, print));
+                checkTickPacing(pacing, std::vector<Program>(32, yielding));
+            }
+        }
+
         Config config;
         config.numCpu = 1;
         config.scheduler = SchedulerType::RR;
