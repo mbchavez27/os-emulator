@@ -167,7 +167,7 @@ StepOutcome Process::step(std::optional<std::size_t> core)
     }
     if (pc_ >= code_.size())
     {
-        state_ = ProcessState::FINISHED;
+        finish();
         return StepOutcome::FINISHED;
     }
 
@@ -251,7 +251,7 @@ StepOutcome Process::step(std::optional<std::size_t> core)
     }
     if (pc_ >= code_.size())
     {
-        state_ = ProcessState::FINISHED;
+        finish();
         return StepOutcome::FINISHED;
     }
     return StepOutcome::EXECUTED;
@@ -270,7 +270,20 @@ void Process::tickSleep()
         return;
     }
 
-    state_ = pc_ >= code_.size() ? ProcessState::FINISHED : ProcessState::READY;
+    if (pc_ >= code_.size())
+    {
+        finish();
+    }
+    else
+    {
+        state_ = ProcessState::READY;
+    }
+}
+
+void Process::finish()
+{
+    variables_.clear();
+    state_ = ProcessState::FINISHED;
 }
 
 std::uint16_t &Process::variableSlot(const std::string &name)

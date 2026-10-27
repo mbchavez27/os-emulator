@@ -29,6 +29,8 @@ std::vector<ProcessView> finish(Scheduler &scheduler, const Observer &observe = 
         std::vector<bool> occupied(scheduler.coreCount());
         for (const auto &view : views)
         {
+            check(view.state != ProcessState::FINISHED || view.variables.empty(),
+                  "Finished process retained its variables");
             check(view.core.has_value() == (view.state == ProcessState::RUNNING),
                   "Snapshot state and core assignment disagree");
             if (view.core)
@@ -72,6 +74,7 @@ Program increments(std::size_t count)
     Program program;
     program.instructions.assign(count, Instruction{AddInstruction{
         "x", Operand::variable("x"), Operand::literal(1)}});
+    program.instructions.push_back(Instruction{PrintInstruction{"x=", std::string{"x"}}});
     return program;
 }
 
@@ -169,6 +172,18 @@ int main()
 {
     try
     {
+        Process cleanup(1, "cleanup", Program{{
+            Instruction{DeclareInstruction{"x", 42}}, Instruction{SleepInstruction{2}}}});
+        cleanup.step();
+        cleanup.step();
+        check(cleanup.isSleeping() && cleanup.variables().at("x") == 42,
+              "Sleeping process released its variables early");
+        cleanup.tickSleep();
+        check(cleanup.variables().at("x") == 42, "Variables disappeared before sleep ended");
+        cleanup.tickSleep();
+        check(cleanup.isFinished() && cleanup.variables().empty(),
+              "Finishing after SLEEP did not release variables");
+
         for (const int cores : {1, 4})
         {
             Config delayed;
@@ -226,7 +241,7 @@ int main()
         check(rotated, "RR ran the first process to completion before rotating");
         for (const auto &view : roundRobin)
         {
-            check(view.variables.at("x") == 16, "Rotation skipped or repeated instructions");
+            check(view.logs == std::vector<std::string>{"x=16"}, "Rotation skipped or repeated instructions");
         }
 
         config.scheduler = SchedulerType::FCFS;
@@ -273,7 +288,7 @@ int main()
             Instruction{SleepInstruction{2}}};
         config.scheduler = SchedulerType::FCFS;
         const auto nestedExpected = run(config, {nested});
-        check(nestedExpected.front().variables.at("x") == 8, "Invalid nested-loop fixture");
+        check(nestedExpected.front().logs.back() == "x=8", "Invalid nested-loop fixture");
         config.scheduler = SchedulerType::RR;
         compare(nestedExpected, run(config, {nested}));
 
@@ -315,7 +330,7 @@ int main()
         check(finish(resumed, [&](const auto &views) {
             check(views.front().currentLine <= 1 + resumed.cycleCount() / config.delayPerExec,
                   "Restart bypassed the remaining execution delay");
-        }).front().variables.at("x") == 16, "Restart lost program position");
+        }).front().logs == std::vector<std::string>{"x=16"}, "Restart lost program position");
         resumed.stop();
         for (int attempt = 0; attempt < 32; ++attempt)
         {

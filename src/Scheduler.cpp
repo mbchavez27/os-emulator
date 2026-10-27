@@ -163,6 +163,12 @@ bool Scheduler::stopGeneration()
     return wasEnabled;
 }
 
+bool Scheduler::takeGenerationFailure()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return std::exchange(generationFailed_, false);
+}
+
 std::uint64_t Scheduler::cycleCount() const noexcept
 {
     return cycles_.load(std::memory_order_relaxed);
@@ -215,9 +221,18 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
 {
     const std::uint64_t nextId = static_cast<std::uint64_t>(process->id()) + 1;
     const std::size_t index = processes_.size();
-    nextProcessExecutionCycles_.resize(index + 1, 0);
-    processes_.push_back(std::move(process));
-    ready_.push_back(index);
+    try
+    {
+        nextProcessExecutionCycles_.resize(index + 1, 0);
+        processes_.push_back(std::move(process));
+        ready_.push_back(index);
+    }
+    catch (...)
+    {
+        processes_.resize(index);
+        nextProcessExecutionCycles_.resize(index);
+        throw;
+    }
     nextGeneratedNumber_ = std::max(nextGeneratedNumber_, nextId);
 }
 
@@ -298,7 +313,16 @@ void Scheduler::dispatchLoop()
         }
 
         reapSleepersLocked();
-        generateProcessesLocked();
+        try
+        {
+            generateProcessesLocked();
+        }
+        catch (const std::exception &)
+        {
+            generationEnabled_ = false;
+            generationAccumulator_ = 0;
+            generationFailed_ = true;
+        }
         switch (schedulerType_)
         {
         case SchedulerType::FCFS:

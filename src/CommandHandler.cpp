@@ -123,6 +123,11 @@ void CommandHandler::run()
             break;
         }
 
+        if (emulator.scheduler().takeGenerationFailure())
+        {
+            std::cout << "Process generation stopped: unable to create a process.\n\n";
+        }
+
         // Trim leading whitespace
         size_t first_non_space = line.find_first_not_of(" \t");
         if (first_non_space == std::string::npos)
@@ -187,9 +192,17 @@ void CommandHandler::run()
 
                 // Processes only execute while the CPU threads run; start() is a no-op if they do.
                 emulator.scheduler().start(emulator.config());
-                if (!emulator.scheduler().createProcess(processName, emulator.config()))
+                try
                 {
-                    std::cout << "Process " << processName << " already exists.\n\n";
+                    if (!emulator.scheduler().createProcess(processName, emulator.config()))
+                    {
+                        std::cout << "Process " << processName << " already exists.\n\n";
+                        continue;
+                    }
+                }
+                catch (const std::exception &error)
+                {
+                    std::cout << "Failed to create process " << processName << ": " << error.what() << "\n\n";
                     continue;
                 }
                 run_process_screen(processName);
