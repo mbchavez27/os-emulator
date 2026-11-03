@@ -141,6 +141,7 @@ Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
 root:\> process-smi
+
 Process name: demo1
 ID: 1390
 Logs:
@@ -162,6 +163,7 @@ Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
 root:\> process-smi
+
 Process name: demo1
 ID: 1
 Logs:
@@ -200,6 +202,7 @@ Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
 root:\> process-smi
+
 Process name: demo1
 ID: 1
 Logs:
@@ -323,6 +326,7 @@ Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
 root:\> process-smi
+
 Process name: demo1
 ID: 1390
 Logs:
@@ -352,6 +356,7 @@ Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
 root:\> process-smi
+
 Process name: demo1
 ID: 1390
 Logs:

@@ -101,8 +101,8 @@ int main()
         // process-smi prints the attached process's status, not a placeholder.
         check(output.find("not implemented") == std::string::npos,
               "process-smi is still a placeholder");
-        check(output.find("Process name: myproc\nID: 1\nLogs:\n") != std::string::npos,
-              "process-smi did not print the name, ID, and Logs header");
+        check(output.find("root:\\> \nProcess name: myproc\nID: 1\nLogs:\n") != std::string::npos,
+              "process-smi did not print a blank line, then the name, ID, and Logs header");
         check(output.find("Lines of code: ") != std::string::npos ||
                   output.find("Finished!") != std::string::npos,
               "process-smi did not print a progress block or Finished!");

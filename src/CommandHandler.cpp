@@ -96,7 +96,8 @@ void CommandHandler::run_process_screen(const std::string &name)
             }
             else
             {
-                std::cout << buildProcessSmi(*view) << "\n";
+                // The mockup leaves a blank line between the command and its output.
+                std::cout << "\n" << buildProcessSmi(*view) << "\n";
             }
         }
         else
