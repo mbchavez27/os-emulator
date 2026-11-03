@@ -89,8 +89,15 @@ Operand randomOperand(GeneratorState &state)
     return Operand::literal(static_cast<uint16_t>(value(state.rng)));
 }
 
-/// The spec fixes the generated message to "Hello world from <process_name>!".
-/// PrintInstruction still supports a variable for hand-built test programs.
+/**
+ * @brief Builds a generated PRINT.
+ *
+ * The spec fixes the generated message to "Hello world from <process_name>!".
+ * PrintInstruction still supports a variable for hand-built test programs.
+ *
+ * @param processName the process the PRINT belongs to
+ * @return the PRINT instruction
+ */
 PrintInstruction makePrint(const std::string &processName)
 {
     return {"Hello world from " + processName + "!", std::nullopt};

@@ -11,8 +11,8 @@ namespace
 
 // Layout follows the spec's screen -ls mockup.
 const char *const kRule = "----------------------------------------\n";
-constexpr std::size_t kNameGap = 3;     ///< Spaces after the longest name.
-constexpr std::size_t kStatusWidth = 13; ///< "Core: 127" / "Finished" plus a gap.
+constexpr std::size_t kNameGap = 3;      /**< Spaces after the longest name. */
+constexpr std::size_t kStatusWidth = 13; /**< "Core: 127" / "Finished" plus a gap. */
 
 std::string formatStartTime(std::chrono::system_clock::time_point time)
 {
@@ -29,7 +29,13 @@ std::string formatStartTime(std::chrono::system_clock::time_point time)
     return out.str();
 }
 
-/// "100%" for whole numbers, "33.33%" otherwise.
+/**
+ * @brief Formats CPU utilization as in the mockup.
+ *
+ * @param used cores running a process
+ * @param total configured cores
+ * @return "100%" for whole numbers, "33.33%" otherwise; "0%" when total is 0
+ */
 std::string formatUtilization(std::size_t used, std::size_t total)
 {
     std::ostringstream out;

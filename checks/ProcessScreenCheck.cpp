@@ -30,7 +30,13 @@ std::size_t count(const std::string &text, const std::string &needle)
     return total;
 }
 
-/// Runs the handler over `input`, returning everything it printed.
+/**
+ * @brief Runs the console over scripted input.
+ *
+ * @param emulator the emulator to drive
+ * @param input the commands to feed, one per line
+ * @return everything the console printed
+ */
 std::string drive(Emulator &emulator, const std::string &input)
 {
     std::istringstream commands(input);

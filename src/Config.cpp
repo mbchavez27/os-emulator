@@ -8,7 +8,7 @@
 namespace
 {
 
-/// The spec states these ranges as [1, 2^32] / [0, 2^32], upper bound inclusive.
+/** @brief Upper bound of the spec's [1, 2^32] / [0, 2^32] ranges, inclusive. */
 constexpr uint64_t kMaxSpecValue = 1ULL << 32;
 
 std::string trim(const std::string &text)

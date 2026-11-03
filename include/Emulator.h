@@ -9,30 +9,46 @@
 #include <utility>
 
 /**
- * @brief Shared application state: liveness plus loaded configuration.
+ * @brief Application state: liveness, the loaded configuration, and the scheduler.
  *
- * CommandHandler mutates it; the main loop observes it. A Config only exists
+ * CommandHandler drives it; the console loops observe it. A Config only exists
  * after a successful initialize(), so no command can observe half-loaded state.
  */
 class Emulator
 {
 public:
-    /// True until exitApp(); the console loops while this holds.
+    /**
+     * @brief Tells the console loops whether to keep reading commands.
+     *
+     * @return true until exitApp() is called
+     */
     bool isAlive() const noexcept
     {
         return alive_;
     }
 
-    /// Stops the scheduler and ends the console; the loops exit on their next check.
+    /**
+     * @brief Shuts the emulator down.
+     *
+     * Stops the scheduler first, so shutting down can never leave CPU threads
+     * running. The console loops exit on their next check.
+     */
     void exitApp()
     {
         scheduler_.stop();
         alive_ = false;
     }
 
-    /// Loads and validates config.txt, then starts the CPU scheduler with the
-    /// configured algorithm; per the spec it runs for as long as the console is
-    /// alive. On failure the emulator stays uninitialized and nothing starts.
+    /**
+     * @brief Loads config.txt and starts the CPU scheduler.
+     *
+     * Per the spec, the scheduler then runs for as long as the console is
+     * alive. On failure the emulator stays uninitialized and nothing starts.
+     *
+     * @param path the config file to read
+     * @param error set to the reason when loading fails
+     * @return true if the config was valid and the scheduler started
+     */
     bool initialize(const std::string &path, std::string &error)
     {
         auto loaded = Config::load(path, error);
@@ -45,12 +61,20 @@ public:
         return true;
     }
 
+    /** @return true once initialize() has succeeded */
     bool isInitialized() const
     {
         return config_.has_value();
     }
 
-    /// Fails fast rather than returning a null or default config.
+    /**
+     * @brief The loaded configuration.
+     *
+     * Fails fast rather than returning a default config.
+     *
+     * @return the config read by initialize()
+     * @throws std::logic_error if called before a successful initialize()
+     */
     const Config &config() const
     {
         if (!config_)
@@ -60,18 +84,20 @@ public:
         return *config_;
     }
 
+    /** @return the CPU scheduler */
     Scheduler &scheduler() noexcept
     {
         return scheduler_;
     }
 
+    /** @return the CPU scheduler, read-only */
     const Scheduler &scheduler() const noexcept
     {
         return scheduler_;
     }
 
 private:
-    bool alive_ = true;
-    std::optional<Config> config_;
-    Scheduler scheduler_;
+    bool alive_ = true;            /**< Cleared only by exitApp(). */
+    std::optional<Config> config_; /**< Empty until initialize() succeeds. */
+    Scheduler scheduler_;          /**< Started by initialize(), stopped by exitApp(). */
 };
