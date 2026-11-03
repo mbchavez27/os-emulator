@@ -523,36 +523,21 @@ src/
 ## Known limitations
 
 - **Sample config overloads the CPU.** `batch-process-freq 1` with
-  `delay-per-exec 0` asks for ~1000 processes/second while 4 cores drain
-  ~4 instructions/tick, so the ready queue grows without bound. A process
+  `delay-per-exec 0` creates a process every tick while 4 cores run one
+  instruction per tick each, so the ready queue grows without bound. A process
   created by `screen -s` after `scheduler-start` queues behind that backlog and
   reports `Current instruction line: 0` with empty logs for a long time. Use a
   larger `batch-process-freq`, a smaller `min-ins`/`max-ins`, or skip
   `scheduler-start` to see live logs immediately.
-- **No history reclamation.** Finished processes release their variables, but
-  the process record (program and logs) stays in memory for the lifetime of the
-  run, and names are never reused, so long runs grow monotonically.
-- **`report-util` overwrites** `csopesy-log.txt` on every call; it does not
-  append. The file is written to the current working directory.
-- **A CPU tick is wall-clock throttled** to ~1 ms (`kCycleInterval`), not a
-  literal busy-wait frame pass as in the spec's pseudocode. Delays and
-  generation frequency are therefore real-time, not instruction-count exact.
-- **Generation can lag the clock.** Each dispatch pass builds at most
-  `kMaxGeneratedPerPass` (4) processes so program generation never holds the
-  scheduler lock long enough to starve the REPL. When the host cannot build
-  processes as fast as `batch-process-freq` requests, the remaining batches carry
-  over and generation runs behind schedule instead of blocking commands.
+- **A CPU tick is paced at ~1 ms** (`kCycleInterval`) instead of the spec
+  pseudocode's unthrottled loop. Each pass still counts exactly one tick; the
+  pause keeps tick-based settings (`SLEEP`, `delay-per-exec`, `quantum-cycles`,
+  `batch-process-freq`) at a usable speed and avoids pinning a core at 100%.
 - **Programs are capped at 1,000,000 instructions.** `min-ins`/`max-ins` accept
   the spec's full `[1, 2^32]` range, but each instruction is held in memory
   (about 360 MB per million). Creating a process whose picked size exceeds
   `kMaxProgramInstructions` fails with `program too large`; `screen -s` reports
   it and `scheduler-start` stops generation with an error instead of freezing.
-- **`config.txt` path is fixed** to `config.txt` in the working directory; there
-  is no command-line flag for an alternate file.
-- **EOF detaches and exits.** Piping input (Ctrl+D) inside a process screen
-  detaches to the main menu, then ends the main loop.
-- **No process control beyond the spec.** There is no command to terminate,
-  kill, or reorder a process, and no memory/hardware visualization.
 
 ## Dependencies
 
