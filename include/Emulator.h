@@ -27,7 +27,9 @@ public:
         is_app_alive = false;
     }
 
-    /// Loads and validates config.txt. On failure the emulator stays uninitialized.
+    /// Loads and validates config.txt, then starts the CPU scheduler with the
+    /// configured algorithm; per the spec it runs for as long as the console is
+    /// alive. On failure the emulator stays uninitialized and nothing starts.
     bool initialize(const std::string &path, std::string &error)
     {
         auto loaded = Config::load(path, error);
@@ -36,6 +38,7 @@ public:
             return false;
         }
         config_ = std::move(*loaded);
+        scheduler_.start(*config_);
         return true;
     }
 

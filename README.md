@@ -12,8 +12,8 @@ succeeds, every command except `initialize` and `exit` is rejected.
 
 | Command | Behavior |
 | --- | --- |
-| `initialize` | Loads and validates `config.txt`. Prints `Initialization successful.` or the offending key. Repeated calls print `System is already initialized.` |
-| `scheduler-start` | Starts dummy process generation (one process per `batch-process-freq` CPU ticks) and the CPU threads if needed. |
+| `initialize` | Loads and validates `config.txt`, then starts the CPU scheduler with the configured algorithm; it runs until `exit`. Prints `Initialization successful.` or the offending key. Repeated calls print `System is already initialized.` |
+| `scheduler-start` | Starts dummy process generation (one process per `batch-process-freq` CPU ticks). |
 | `scheduler-stop` | Stops generation synchronously; queued and running processes continue to completion. |
 | `screen -ls` | Prints CPU utilization, core counts, and running/finished process rows. |
 | `screen -s <name>` | Creates process `<name>` and attaches the console to its process screen. |
@@ -463,6 +463,9 @@ Every field below maps 1:1 to `include/Config.h`.
 | `delay-per-exec` | `delayPerExec` | `uint64_t` | `[0, 4294967296]` (2^32) |
 
 - `min-ins` must not exceed `max-ins`.
+- `delay-per-exec d` makes a process wait `d` whole CPU cycles before its next
+  instruction, staying on its core (busy-waiting): `0` runs one instruction per
+  cycle, `1` one every 2 cycles, `d` one every `d + 1` cycles.
 - The spec's `delays-per-exec` spelling is accepted as an alias for the
   mockup's `delay-per-exec`.
 - Unknown keys are ignored; blank lines and `#` comments are skipped.
