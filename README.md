@@ -20,14 +20,15 @@ succeeds, every command except `initialize` and `exit` is rejected.
 | `screen -r <name>` | Reattaches to an existing unfinished process; `Process <name> not found.` for missing or finished names. |
 | `screen` (bare or unknown flag) | Prints usage for `screen -s`, `screen -r`, and `screen -ls`. |
 | `report-util` | Writes the same report as `screen -ls` to `csopesy-log.txt`, replacing the previous report. |
-| `clear` | Clears the console via `system("clear"/"cls")` and re-prints the header. |
 | `exit` | Stops generation and all CPU threads, then ends the loop. |
 | anything else | `Command not recognized. Please try again.` |
 
-Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits. The main-menu prompt is
-`Enter a command: `.
+Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits. Both the main menu
+and process screens use the `root:\> ` prompt, as in the spec mockup. Attaching
+prints `Process screen: <name>` and detaching reprints the header, so the screen
+you are on is visible after every switch.
 
-Inside a process screen the prompt is `root:\> `:
+Commands inside a process screen:
 
 | Command | Behavior |
 | --- | --- |
@@ -50,53 +51,58 @@ Every run starts with the header:
  | (__   \__ \  | (_) |  |  _/  | _|   \__ \   \ V /
   \___|  |___/   \___/   |_|    |___|  |___/    |_|
 
-Hello, Welcome to CSOPESY commandline!
-Type 'exit' to quit, 'clear' to clear the screen
+--------------------------------------------
+Welcome to CSOPESY Emulator!
 
-** IMPORTANT: Type 'initialize' to load config and start system **
+Developers:
+Chavez, Max Benedict B.
+Leano, Jeremy L.
+Go, Timothy Aaron S.
+De La Calzada, Wanda
+--------------------------------------------
 ```
 
 ### `initialize`
 
 ```text
-Enter a command: initialize
+root:\> initialize
 Initialization successful.
 ```
 
 Invalid config keeps the system uninitialized and reports the offending key:
 
 ```text
-Enter a command: initialize
+root:\> initialize
 Config key 'num-cpu' must be in [1, 128], got '0'.
 ```
 
 Calling it twice:
 
 ```text
-Enter a command: initialize
+root:\> initialize
 System is already initialized.
 ```
 
 ### `scheduler-start` / `scheduler-stop`
 
 ```text
-Enter a command: scheduler-start
+root:\> scheduler-start
 Process generation started.
 
-Enter a command: scheduler-start
+root:\> scheduler-start
 Process generation is already running.
 
-Enter a command: scheduler-stop
+root:\> scheduler-stop
 Process generation stopped. Existing processes will continue running.
 
-Enter a command: scheduler-stop
+root:\> scheduler-stop
 Process generation is not running.
 ```
 
 ### `screen -ls`
 
 ```text
-Enter a command: screen -ls
+root:\> screen -ls
 CPU utilization: 100.00%
 Cores used: 4
 Cores available: 0
@@ -130,7 +136,7 @@ walkthrough — with the sample config the process queues behind the generated
 backlog):
 
 ```text
-Enter a command: screen -s demo1
+root:\> screen -s demo1
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -145,13 +151,13 @@ Lines of code: 1048
 root:\> exit
 ```
 
-`exit` clears the screen, reprints the header, and returns to `Enter a command: `.
+`exit` clears the screen, reprints the header, and returns to the main-menu `root:\> ` prompt.
 
 With no generator running, `process-smi` shows live `PRINT` output with the core
 and execution timestamp of each log line:
 
 ```text
-Enter a command: screen -s demo1
+root:\> screen -s demo1
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -176,21 +182,21 @@ Once a process finishes, the progress block is replaced by `Finished!`.
 Creating a duplicate name is rejected before attaching:
 
 ```text
-Enter a command: screen -s demo1
+root:\> screen -s demo1
 Process demo1 already exists.
 ```
 
 Malformed invocations print usage:
 
 ```text
-Enter a command: screen -s
+root:\> screen -s
 Usage: screen -s <process name>
 ```
 
 ### `screen -r <name>`
 
 ```text
-Enter a command: screen -r demo1
+root:\> screen -r demo1
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -207,14 +213,14 @@ root:\> exit
 Missing or finished processes:
 
 ```text
-Enter a command: screen -r ghost
+root:\> screen -r ghost
 Process ghost not found.
 ```
 
 ### `report-util`
 
 ```text
-Enter a command: report-util
+root:\> report-util
 Report saved to csopesy-log.txt.
 ```
 
@@ -232,13 +238,12 @@ Finished processes:
 
 ```
 
-### `clear` and `exit`
+### `exit`
 
-`clear` wipes the terminal and reprints the CSOPESY header. `exit` stops the
-generation and CPU threads and terminates the process:
+`exit` stops generation and the CPU threads and terminates the process:
 
 ```text
-Enter a command: exit
+root:\> exit
 $ echo $?
 0
 ```
@@ -246,16 +251,16 @@ $ echo $?
 ### Unrecognized input
 
 ```text
-Enter a command: foo
+root:\> foo
 Command not recognized. Please try again.
 
-Enter a command: screen
+root:\> screen
 Usage:
   screen -s <process name>   Create a process and attach to it
   screen -r <process name>   Reattach to a running process
   screen -ls                 List running and finished processes
 
-Enter a command: screen -r ghost
+root:\> screen -r ghost
 Process ghost not found.
 ```
 
@@ -290,13 +295,13 @@ Transcript of a real run (trimmed — `screen -ls` prints one row per generated
 process; this run had 1133 after two seconds):
 
 ```text
-Enter a command: initialize
+root:\> initialize
 Initialization successful.
 
-Enter a command: scheduler-start
+root:\> scheduler-start
 Process generation started.
 
-Enter a command: screen -ls
+root:\> screen -ls
 CPU utilization: 100.00%
 Cores used: 4
 Cores available: 0
@@ -314,7 +319,7 @@ p1133 (11/04/2026 01:17:55 AM) Core: -- 0 / 1348
 
 Finished processes:
 
-Enter a command: screen -s demo1
+root:\> screen -s demo1
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -333,12 +338,17 @@ root:\> exit
  | (__   \__ \  | (_) |  |  _/  | _|   \__ \   \ V /
   \___|  |___/   \___/   |_|    |___|  |___/    |_|
 
-Hello, Welcome to CSOPESY commandline!
-Type 'exit' to quit, 'clear' to clear the screen
+--------------------------------------------
+Welcome to CSOPESY Emulator!
 
-** IMPORTANT: Type 'initialize' to load config and start system **
+Developers:
+Chavez, Max Benedict B.
+Leano, Jeremy L.
+Go, Timothy Aaron S.
+De La Calzada, Wanda
+--------------------------------------------
 
-Enter a command: screen -r demo1
+root:\> screen -r demo1
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -357,15 +367,20 @@ root:\> exit
  | (__   \__ \  | (_) |  |  _/  | _|   \__ \   \ V /
   \___|  |___/   \___/   |_|    |___|  |___/    |_|
 
-Hello, Welcome to CSOPESY commandline!
-Type 'exit' to quit, 'clear' to clear the screen
+--------------------------------------------
+Welcome to CSOPESY Emulator!
 
-** IMPORTANT: Type 'initialize' to load config and start system **
+Developers:
+Chavez, Max Benedict B.
+Leano, Jeremy L.
+Go, Timothy Aaron S.
+De La Calzada, Wanda
+--------------------------------------------
 
-Enter a command: report-util
+root:\> report-util
 Report saved to csopesy-log.txt.
 
-Enter a command: exit
+root:\> exit
 ```
 
 ```bash
@@ -523,7 +538,7 @@ src/
 - CMake >= 3.16
 - C++17 compiler: GCC (tested 15.2.1), Clang / Apple Clang, or MSVC
 - No third-party libraries
-- `clear` command uses `system("clear")` on Fedora/macOS, `system("cls")` on Windows
+- Entering and leaving a process screen clears the terminal with `system("clear")` on Fedora/macOS, `system("cls")` on Windows
 - Colors use ANSI escape codes; needs an ANSI-capable terminal (Terminal/iTerm2 on macOS, GNOME Terminal/Konsole on Fedora, Windows Terminal or modern cmd/PowerShell on Windows)
 
 ## Prerequisites
@@ -634,19 +649,19 @@ Run from the repository root so `config.txt` is found:
 Fedora / macOS:
 
 ```bash
-printf "initialize\nscreen\nfoo\nclear\nexit\n" | ./build/os-emulator
+printf "initialize\nscreen\nfoo\nexit\n" | ./build/os-emulator
 ```
 
 Windows (Git Bash):
 
 ```bash
-printf "initialize\nscreen\nfoo\nclear\nexit\n" | ./build/Debug/os-emulator.exe
+printf "initialize\nscreen\nfoo\nexit\n" | ./build/Debug/os-emulator.exe
 ```
 
 Windows (PowerShell):
 
 ```powershell
-"initialize", "screen", "foo", "clear", "exit" | .\build\Debug\os-emulator.exe
+"initialize", "screen", "foo", "exit" | .\build\Debug\os-emulator.exe
 ```
 
 ### Tests

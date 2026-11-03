@@ -81,7 +81,8 @@ int main()
               "Both malformed screen -s calls should print usage");
         check(output.find("Process screen: myproc") != std::string::npos,
               "screen -s did not enter the process screen");
-        check(output.find("root:\\> ") != std::string::npos, "Process screen prompt is missing");
+        // The main menu shares the root:\> prompt, so look for it right after the attach banner.
+        check(output.find("main menu.\n\nroot:\\> ") != std::string::npos, "Process screen prompt is missing");
         check(output.find("Unknown command 'foo'. Available commands: process-smi, exit") !=
                   std::string::npos,
               "Unknown input was not reported");
@@ -107,7 +108,7 @@ int main()
               "process-smi did not print a progress block or Finished!");
 
         // Header is intact after the detach: once at startup, once after 'exit'.
-        check(count(output, "Hello, Welcome to CSOPESY commandline!") == 2,
+        check(count(output, "Welcome to CSOPESY Emulator!") == 2,
               "Header was not reprinted after detaching");
         check(emulator.scheduler().isRunning(), "Attaching must start the CPU threads");
 
@@ -116,7 +117,7 @@ int main()
         const std::string eofOutput = drive(emulator, "screen -s eofproc\n");
         check(eofOutput.find("Process screen: eofproc") != std::string::npos,
               "EOF case did not attach");
-        check(count(eofOutput, "Hello, Welcome to CSOPESY commandline!") == 2,
+        check(count(eofOutput, "Welcome to CSOPESY Emulator!") == 2,
               "EOF inside the process screen did not detach to the main menu");
         check(emulator.is_app_alive, "EOF inside the process screen terminated the emulator");
         check(named(emulator, "eofproc").size() == 1, "The process was lost on EOF detach");

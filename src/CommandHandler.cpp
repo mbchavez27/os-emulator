@@ -16,17 +16,22 @@ CommandHandler::CommandHandler(Emulator &e) : emulator(e) {}
 
 void CommandHandler::print_header()
 {
-    // Print the ASCII Art
-    std::vector<std::string> art = ascii_art::convert_to_ascii("CSOPESY");
-    for (const auto &line : art)
+    for (const auto &line : ascii_art::convert_to_ascii("CSOPESY"))
     {
         std::cout << line << "\n";
     }
 
-    // Print the colored greeting text
-    std::cout << console_colors::GREEN << "Hello, Welcome to CSOPESY commandline!" << console_colors::RESET << "\n";
-    std::cout << console_colors::YELLOW << "Type 'exit' to quit, 'clear' to clear the screen\n\n";
-    std::cout << "** IMPORTANT: Type 'initialize' to load config and start system **" << console_colors::RESET << "\n\n";
+    // Banner layout follows the spec's main-menu mockup.
+    std::cout << "--------------------------------------------\n"
+              << console_colors::GREEN << "Welcome to CSOPESY Emulator!" << console_colors::RESET << "\n"
+              << "\n"
+                 "Developers:\n"
+                 "Chavez, Max Benedict B.\n"
+                 "Leano, Jeremy L.\n"
+                 "Go, Timothy Aaron S.\n"
+                 "De La Calzada, Wanda\n"
+                 "--------------------------------------------\n"
+                 "\n";
 }
 
 void CommandHandler::clear_screen()
@@ -116,7 +121,7 @@ void CommandHandler::run()
     // Loop until `exit` flips Emulator::is_app_alive to false
     while (emulator.is_app_alive)
     {
-        std::cout << "Enter a command: " << std::flush;
+        std::cout << "root:\\> " << std::flush;
 
         if (!std::getline(std::cin, line))
         {
@@ -272,11 +277,6 @@ void CommandHandler::run()
             {
                 std::cout << "Failed to write csopesy-log.txt.\n\n";
             }
-        }
-        else if (cmd == "clear")
-        {
-            clear_screen();
-            print_header();
         }
         else
         {
