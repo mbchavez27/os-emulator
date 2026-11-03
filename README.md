@@ -18,6 +18,7 @@ succeeds, every command except `initialize` and `exit` is rejected.
 | `screen -ls` | Prints CPU utilization, core counts, and running/finished process rows. |
 | `screen -s <name>` | Creates process `<name>` and attaches the console to its process screen. |
 | `screen -r <name>` | Reattaches to an existing unfinished process; `Process <name> not found.` for missing or finished names. |
+| `screen` (bare or unknown flag) | Prints usage for `screen -s`, `screen -r`, and `screen -ls`. |
 | `report-util` | Writes the same report as `screen -ls` to `csopesy-log.txt`, replacing the previous report. |
 | `clear` | Clears the console via `system("clear"/"cls")` and re-prints the header. |
 | `exit` | Stops generation and all CPU threads, then ends the loop. |
@@ -249,7 +250,10 @@ Enter a command: foo
 Command not recognized. Please try again.
 
 Enter a command: screen
-screen command recognized. Doing something.
+Usage:
+  screen -s <process name>   Create a process and attach to it
+  screen -r <process name>   Reattach to a running process
+  screen -ls                 List running and finished processes
 
 Enter a command: screen -r ghost
 Process ghost not found.
@@ -497,9 +501,6 @@ src/
 - **No history reclamation.** Finished processes release their variables, but
   the process record (program and logs) stays in memory for the lifetime of the
   run, and names are never reused, so long runs grow monotonically.
-- **`screen` without a valid subcommand** falls through to the placeholder
-  `screen command recognized. Doing something.` instead of a usage error. Only
-  `-ls`, `-s <name>`, and `-r <name>` are implemented.
 - **`report-util` overwrites** `csopesy-log.txt` on every call; it does not
   append. The file is written to the current working directory.
 - **A CPU tick is wall-clock throttled** to ~1 ms (`kCycleInterval`), not a

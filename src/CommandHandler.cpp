@@ -227,7 +227,11 @@ void CommandHandler::run()
             } 
             else
             {
-                std::cout << "screen command recognized. Doing something.\n\n";
+                // Bare `screen`, unknown flags, and `screen -ls` with extra arguments.
+                std::cout << "Usage:\n"
+                             "  screen -s <process name>   Create a process and attach to it\n"
+                             "  screen -r <process name>   Reattach to a running process\n"
+                             "  screen -ls                 List running and finished processes\n\n";
             }
         }
         else if (cmd == "scheduler-start")

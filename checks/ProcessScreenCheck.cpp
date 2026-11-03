@@ -121,6 +121,13 @@ int main()
         check(emulator.is_app_alive, "EOF inside the process screen terminated the emulator");
         check(named(emulator, "eofproc").size() == 1, "The process was lost on EOF detach");
 
+        // Anything that is not -s, -r, or a bare -ls prints the full usage.
+        const std::string usageOutput = drive(emulator, "screen\nscreen -x\nscreen -ls extra\n");
+        check(count(usageOutput, "Usage:\n  screen -s <process name>") == 3,
+              "Bare or malformed screen did not print the usage");
+        check(usageOutput.find("Doing something") == std::string::npos,
+              "screen still prints the placeholder");
+
         const auto created = named(emulator, "myproc");
         check(created.size() == 1, "screen -s must create exactly one process with that name");
 
