@@ -165,13 +165,12 @@ root:\> process-smi
 Process name: demo1
 ID: 1
 Logs:
-(10/27/2026 09:20:51PM) Core:0 "Hello world from demo1!"
-(10/27/2026 09:20:51PM) Core:0 "Hello world from demo1!"
-(10/27/2026 09:20:51PM) Core:0 "Value from: 2561"
+(11/04/2026 01:42:23AM) Core:0 "Hello world from demo1!"
+(11/04/2026 01:42:23AM) Core:0 "Hello world from demo1!"
 ...
-(10/27/2026 09:20:52PM) Core:0 "Value from: 49304"
+(11/04/2026 01:42:25AM) Core:0 "Hello world from demo1!"
 
-Current instruction line: 64
+Current instruction line: 45
 Lines of code: 1037
 
 root:\>

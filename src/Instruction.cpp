@@ -63,21 +63,18 @@ Operand randomOperand(GeneratorState &state)
     return Operand::literal(static_cast<uint16_t>(value(state.rng)));
 }
 
-PrintInstruction makePrint(GeneratorState &state, const std::string &processName)
+/// The spec fixes the generated message to "Hello world from <process_name>!".
+/// PrintInstruction still supports a variable for hand-built test programs.
+PrintInstruction makePrint(const std::string &processName)
 {
-    std::uniform_int_distribution<int> form(0, 1);
-    if (form(state.rng) == 0 || state.variables.empty())
-    {
-        return {"Hello world from " + processName + "!", std::nullopt};
-    }
-    return {"Value from: ", ensureVariable(state)};
+    return {"Hello world from " + processName + "!", std::nullopt};
 }
 
 Instruction makeSimple(GeneratorState &state, Op op, const std::string &processName)
 {
     if (op == Op::PRINT)
     {
-        return Instruction{makePrint(state, processName)};
+        return Instruction{makePrint(processName)};
     }
 
     if (op == Op::DECLARE)
