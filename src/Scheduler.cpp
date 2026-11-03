@@ -212,17 +212,18 @@ std::optional<std::uint32_t> Scheduler::createProcess(const std::string &name, c
 
 bool Scheduler::hasProcessNamedLocked(const std::string &name) const
 {
-    return std::any_of(processes_.begin(), processes_.end(), [&](const auto &process) {
-        return process->name() == name;
-    });
+    return processNames_.count(name) != 0;
 }
 
 void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
 {
     const std::uint64_t nextId = static_cast<std::uint64_t>(process->id()) + 1;
     const std::size_t index = processes_.size();
+    const std::string name = process->name();
+    bool nameInserted = false;
     try
     {
+        nameInserted = processNames_.insert(name).second;
         nextProcessExecutionCycles_.resize(index + 1, 0);
         processes_.push_back(std::move(process));
         ready_.push_back(index);
@@ -231,6 +232,10 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
     {
         processes_.resize(index);
         nextProcessExecutionCycles_.resize(index);
+        if (nameInserted)
+        {
+            processNames_.erase(name);
+        }
         throw;
     }
     nextGeneratedNumber_ = std::max(nextGeneratedNumber_, nextId);
@@ -449,7 +454,8 @@ void Scheduler::generateProcessesLocked()
     const std::uint64_t now = cycles_.load(std::memory_order_relaxed);
     generationAccumulator_ += now - generationLastCycle_;
     generationLastCycle_ = now;
-    while (generationAccumulator_ >= generationConfig_.batchProcessFreq)
+    for (std::size_t created = 0;
+         created < kMaxGeneratedPerPass && generationAccumulator_ >= generationConfig_.batchProcessFreq;)
     {
         if (nextGeneratedNumber_ > std::numeric_limits<std::uint32_t>::max())
         {
@@ -467,6 +473,7 @@ void Scheduler::generateProcessesLocked()
         enqueueProcessLocked(std::make_unique<Process>(
             id, name, generateProgram(generationConfig_, name, id)));
         generationAccumulator_ -= generationConfig_.batchProcessFreq;
+        ++created;
     }
 }
 

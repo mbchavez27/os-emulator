@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 /// Immutable copy of one process's observable state at snapshot time.
@@ -135,6 +136,10 @@ private:
 
     /// One CPU tick every 1 ms (~1000 ticks/second).
     static constexpr std::chrono::milliseconds kCycleInterval{1};
+    /// Upper bound on processes built per dispatch pass. Building a program happens
+    /// under mutex_, so an unbounded catch-up loop would starve the REPL whenever
+    /// generation falls behind the clock; leftover batches carry to the next pass.
+    static constexpr std::size_t kMaxGeneratedPerPass = 4;
 
     std::atomic<std::uint64_t> cycles_{0};
     std::atomic<bool> running_{false};
@@ -158,6 +163,8 @@ private:
     std::deque<std::size_t> ready_;
     std::vector<SleepEntry> sleeping_;
     std::vector<std::unique_ptr<Process>> processes_;
+    /// Names of every entry in processes_; keeps duplicate checks O(1) under mutex_.
+    std::unordered_set<std::string> processNames_;
     std::vector<std::uint64_t> nextProcessExecutionCycles_; ///< Survives preemption and stop/resume.
 
     std::thread clockThread_;
