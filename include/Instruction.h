@@ -20,15 +20,26 @@ enum class Op
     FOR
 };
 
-/// An arithmetic argument: either a variable name or a uint16 literal.
-struct Operand
+/// An arithmetic argument: either a variable name or a uint16 literal, never both.
+class Operand
 {
+public:
+    /// @throws std::invalid_argument if name is empty.
     static Operand variable(std::string name);
     static Operand literal(uint16_t value);
 
-    bool isLiteral = false;
-    std::string name;   ///< Used when !isLiteral.
-    uint16_t value = 0; ///< Used when isLiteral.
+    bool isLiteral() const noexcept;
+    /// @throws std::bad_variant_access if this is a literal.
+    const std::string &variableName() const;
+    /// @throws std::bad_variant_access if this is a variable.
+    uint16_t literalValue() const;
+    /// Source form: the variable name or the number.
+    std::string toString() const;
+
+private:
+    explicit Operand(std::variant<std::string, uint16_t> value);
+
+    std::variant<std::string, uint16_t> value_;
 };
 
 struct PrintInstruction

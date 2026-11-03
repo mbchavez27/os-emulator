@@ -109,7 +109,7 @@ namespace ascii_art
      * @param text The input string to convert.
      * @return std::vector<std::string> A vector of size 5 containing the final ASCII rows.
      */
-    std::vector<std::string> convert_to_ascii(const std::string &text)
+    std::vector<std::string> convertToAscii(const std::string &text)
     {
         std::vector<std::string> rows(ASCII_ROWS, "");
         if (text.empty())

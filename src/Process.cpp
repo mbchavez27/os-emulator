@@ -176,72 +176,8 @@ StepOutcome Process::step(std::optional<std::size_t> core)
     const Instruction &instruction = code_[pc_];
     const std::size_t executedLine = pc_ + 1;
 
-    bool sleeping = false;
-    std::uint8_t sleepTicks = 0;
-
-    std::visit(
-        [&](const auto &payload) {
-            using T = std::decay_t<decltype(payload)>;
-            if constexpr (std::is_same_v<T, PrintInstruction>)
-            {
-                std::string line = payload.text;
-                if (payload.variable)
-                {
-                    line += std::to_string(variableSlot(*payload.variable));
-                }
-                logs_.push_back(std::move(line));
-                logStamps_.push_back(LogStamp{std::chrono::system_clock::now(), core});
-            }
-            else if constexpr (std::is_same_v<T, DeclareInstruction>)
-            {
-                variableSlot(payload.name) = payload.value;
-            }
-            else if constexpr (std::is_same_v<T, AddInstruction>)
-            {
-                const std::int32_t result =
-                    static_cast<std::int32_t>(resolve(payload.lhs)) +
-                    static_cast<std::int32_t>(resolve(payload.rhs));
-                variableSlot(payload.target) = clampToUint16(result);
-            }
-            else if constexpr (std::is_same_v<T, SubtractInstruction>)
-            {
-                const std::int32_t result =
-                    static_cast<std::int32_t>(resolve(payload.lhs)) -
-                    static_cast<std::int32_t>(resolve(payload.rhs));
-                variableSlot(payload.target) = clampToUint16(result);
-            }
-            else if constexpr (std::is_same_v<T, SleepInstruction>)
-            {
-                sleeping = payload.ticks > 0;
-                sleepTicks = payload.ticks;
-            }
-            else
-            {
-                const std::size_t bodySize = forBodySizes_[pc_];
-                if (payload.repeats > 0 && bodySize > 0)
-                {
-                    frames_.push_back(
-                        ForFrame{pc_ + 1,
-                                 pc_ + 1 + bodySize,
-                                 static_cast<std::uint16_t>(payload.repeats - 1)});
-                }
-                else
-                {
-                    // Nothing to execute in the body; advance() then moves
-                    // past the FOR itself.
-                    pc_ += bodySize;
-                }
-            }
-        },
-        instruction.payload);
-
+    std::visit([&](const auto &payload) { execute(payload, core); }, instruction.payload);
     currentLine_ = executedLine;
-
-    if (sleeping)
-    {
-        sleepTicksRemaining_ = sleepTicks;
-        state_ = ProcessState::WAITING;
-    }
 
     advance();
 
@@ -255,6 +191,63 @@ StepOutcome Process::step(std::optional<std::size_t> core)
         return StepOutcome::FINISHED;
     }
     return StepOutcome::EXECUTED;
+}
+
+void Process::execute(const PrintInstruction &print, std::optional<std::size_t> core)
+{
+    std::string line = print.text;
+    if (print.variable)
+    {
+        line += std::to_string(variableSlot(*print.variable));
+    }
+    logs_.push_back(std::move(line));
+    logStamps_.push_back(LogStamp{std::chrono::system_clock::now(), core});
+}
+
+void Process::execute(const DeclareInstruction &declare, std::optional<std::size_t>)
+{
+    variableSlot(declare.name) = declare.value;
+}
+
+void Process::execute(const AddInstruction &add, std::optional<std::size_t>)
+{
+    storeClamped(add.target, static_cast<std::int32_t>(resolve(add.lhs)) +
+                                 static_cast<std::int32_t>(resolve(add.rhs)));
+}
+
+void Process::execute(const SubtractInstruction &subtract, std::optional<std::size_t>)
+{
+    storeClamped(subtract.target, static_cast<std::int32_t>(resolve(subtract.lhs)) -
+                                      static_cast<std::int32_t>(resolve(subtract.rhs)));
+}
+
+void Process::execute(const SleepInstruction &sleep, std::optional<std::size_t>)
+{
+    if (sleep.ticks > 0)
+    {
+        sleepTicksRemaining_ = sleep.ticks;
+        state_ = ProcessState::WAITING;
+    }
+}
+
+void Process::execute(const ForInstruction &loop, std::optional<std::size_t>)
+{
+    const std::size_t bodySize = forBodySizes_[pc_];
+    if (loop.repeats > 0 && bodySize > 0)
+    {
+        frames_.push_back(ForFrame{pc_ + 1, pc_ + 1 + bodySize,
+                                   static_cast<std::uint16_t>(loop.repeats - 1)});
+    }
+    else
+    {
+        // Nothing to execute in the body; advance() then moves past the FOR itself.
+        pc_ += bodySize;
+    }
+}
+
+void Process::storeClamped(const std::string &target, std::int32_t value)
+{
+    variableSlot(target) = clampToUint16(value);
 }
 
 void Process::tickSleep()
@@ -293,7 +286,7 @@ std::uint16_t &Process::variableSlot(const std::string &name)
 
 std::uint16_t Process::resolve(const Operand &operand)
 {
-    return operand.isLiteral ? operand.value : variableSlot(operand.name);
+    return operand.isLiteral() ? operand.literalValue() : variableSlot(operand.variableName());
 }
 
 void Process::advance()

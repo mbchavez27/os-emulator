@@ -7,14 +7,40 @@
 #include <type_traits>
 #include <utility>
 
+Operand::Operand(std::variant<std::string, uint16_t> value) : value_(std::move(value)) {}
+
 Operand Operand::variable(std::string name)
 {
-    return Operand{false, std::move(name), 0};
+    if (name.empty())
+    {
+        throw std::invalid_argument("Operand variable name must not be empty");
+    }
+    return Operand(std::move(name));
 }
 
 Operand Operand::literal(uint16_t value)
 {
-    return Operand{true, {}, value};
+    return Operand(value);
+}
+
+bool Operand::isLiteral() const noexcept
+{
+    return std::holds_alternative<uint16_t>(value_);
+}
+
+const std::string &Operand::variableName() const
+{
+    return std::get<std::string>(value_);
+}
+
+uint16_t Operand::literalValue() const
+{
+    return std::get<uint16_t>(value_);
+}
+
+std::string Operand::toString() const
+{
+    return isLiteral() ? std::to_string(literalValue()) : variableName();
 }
 
 namespace
@@ -147,11 +173,6 @@ std::vector<Instruction> generateSequence(GeneratorState &state,
     return instructions;
 }
 
-std::string operandText(const Operand &operand)
-{
-    return operand.isLiteral ? std::to_string(operand.value) : operand.name;
-}
-
 void appendInstruction(std::string &out, const Instruction &instruction, int indent)
 {
     const std::string pad(static_cast<std::size_t>(indent) * 2, ' ');
@@ -179,7 +200,7 @@ void appendInstruction(std::string &out, const Instruction &instruction, int ind
                 const char *name =
                     std::is_same_v<T, AddInstruction> ? "ADD" : "SUBTRACT";
                 out += pad + name + " (" + payload.target + ", " +
-                       operandText(payload.lhs) + ", " + operandText(payload.rhs) + ")\n";
+                       payload.lhs.toString() + ", " + payload.rhs.toString() + ")\n";
             }
             else if constexpr (std::is_same_v<T, SleepInstruction>)
             {

@@ -18,5 +18,5 @@ namespace ascii_art
      * @param text The input string to be converted (e.g., "HELLO").
      * @return std::vector<std::string> A vector containing the rendered lines of ASCII art.
      */
-    std::vector<std::string> convert_to_ascii(const std::string &text);
+    std::vector<std::string> convertToAscii(const std::string &text);
 }

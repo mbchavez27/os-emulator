@@ -17,14 +17,17 @@
 class Emulator
 {
 public:
-    /// True while CLI loop should keep running. Set false by exit_app().
-    bool is_app_alive = true;
+    /// True until exitApp(); the console loops while this holds.
+    bool isAlive() const noexcept
+    {
+        return alive_;
+    }
 
-    /// Signals shutdown; loop exits on next iteration check.
-    void exit_app()
+    /// Stops the scheduler and ends the console; the loops exit on their next check.
+    void exitApp()
     {
         scheduler_.stop();
-        is_app_alive = false;
+        alive_ = false;
     }
 
     /// Loads and validates config.txt, then starts the CPU scheduler with the
@@ -68,6 +71,7 @@ public:
     }
 
 private:
+    bool alive_ = true;
     std::optional<Config> config_;
     Scheduler scheduler_;
 };

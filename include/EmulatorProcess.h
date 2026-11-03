@@ -115,6 +115,16 @@ private:
     std::vector<std::string> logs_;
     std::vector<LogStamp> logStamps_; ///< Parallel: one stamp per logs_ entry.
 
+    // One instruction each; the FOR overload pushes a loop frame at pc_.
+    void execute(const PrintInstruction &print, std::optional<std::size_t> core);
+    void execute(const DeclareInstruction &declare, std::optional<std::size_t> core);
+    void execute(const AddInstruction &add, std::optional<std::size_t> core);
+    void execute(const SubtractInstruction &subtract, std::optional<std::size_t> core);
+    void execute(const SleepInstruction &sleep, std::optional<std::size_t> core);
+    void execute(const ForInstruction &loop, std::optional<std::size_t> core);
+    /// Writes an ADD/SUBTRACT result clamped to [0, 65535].
+    void storeClamped(const std::string &target, std::int32_t value);
+
     /// Returns the variable slot, inserting 0 when referenced for the first time.
     std::uint16_t &variableSlot(const std::string &name);
     std::uint16_t resolve(const Operand &operand);

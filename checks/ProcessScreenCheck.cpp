@@ -60,7 +60,7 @@ int main()
         Emulator emulator;
 
         // Attach, reject bad input, detach, then try the same name again. The
-        // trailing EOF skips exit_app() so the scheduler is still running below.
+        // trailing EOF skips exitApp() so the scheduler is still running below.
         // scheduler-start is typed inside the screen, where it must be refused.
         const std::string output = drive(
             emulator,
@@ -113,13 +113,13 @@ int main()
         check(emulator.scheduler().isRunning(), "Attaching must start the CPU threads");
 
         // EOF inside the process screen detaches instead of terminating. The
-        // stream is already at EOF, so the main loop then ends without exit_app().
+        // stream is already at EOF, so the main loop then ends without exitApp().
         const std::string eofOutput = drive(emulator, "screen -s eofproc\n");
         check(eofOutput.find("Process screen: eofproc") != std::string::npos,
               "EOF case did not attach");
         check(count(eofOutput, "Welcome to CSOPESY Emulator!") == 2,
               "EOF inside the process screen did not detach to the main menu");
-        check(emulator.is_app_alive, "EOF inside the process screen terminated the emulator");
+        check(emulator.isAlive(), "EOF inside the process screen terminated the emulator");
         check(named(emulator, "eofproc").size() == 1, "The process was lost on EOF detach");
 
         // Anything that is not -s, -r, or a bare -ls prints the full usage.
@@ -153,7 +153,7 @@ int main()
         const auto second = emulator.scheduler().createProcess("manual2", emulator.config());
         check(second.has_value() && *second != *first, "Manual processes reused an id");
 
-        emulator.exit_app();
+        emulator.exitApp();
         std::cout << "Process screen checks passed.\n";
     }
     catch (const std::exception &error)

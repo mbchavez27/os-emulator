@@ -122,7 +122,7 @@ checks/
   SchedulerQuantumCheck.cpp # RR quantum preemption, sleep/wake budgets
   SchedulerReportCheck.cpp  # report-util + screen -ls formatting across load levels
 include/
-  AsciiArt.h                # convert_to_ascii() declaration, ASCII_ROWS constant
+  AsciiArt.h                # convertToAscii() declaration, ASCII_ROWS constant
   CommandHandler.h          # REPL loop declaration, borrows Emulator by reference
   Config.h                  # SchedulerType + validated configuration struct
   ConsoleColors.h           # ANSI color constants (header-only)

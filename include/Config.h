@@ -13,8 +13,10 @@ enum class SchedulerType
 /**
  * @brief Emulator configuration loaded from config.txt.
  *
- * Immutable once created: the only way to obtain a Config is the load()
- * factory, which validates every value before returning it.
+ * load() validates every value before returning a Config. The console never
+ * changes it afterwards: Emulator keeps it private and hands out only a const
+ * reference. Fields stay plain so tests can build configs directly; Scheduler
+ * re-checks the values it depends on (quantum, frequency, instruction bounds).
  */
 struct Config
 {

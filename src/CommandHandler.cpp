@@ -15,9 +15,9 @@
 
 CommandHandler::CommandHandler(Emulator &e) : emulator(e) {}
 
-void CommandHandler::print_header()
+void CommandHandler::printHeader()
 {
-    for (const auto &line : ascii_art::convert_to_ascii("CSOPESY"))
+    for (const auto &line : ascii_art::convertToAscii("CSOPESY"))
     {
         std::cout << line << "\n";
     }
@@ -35,7 +35,7 @@ void CommandHandler::print_header()
                  "\n";
 }
 
-void CommandHandler::clear_screen()
+void CommandHandler::clearScreen()
 {
     // Deliberate system() call: no portable C++ API for console clear
 #ifdef _WIN32
@@ -51,14 +51,14 @@ void CommandHandler::clear_screen()
 #endif
 }
 
-void CommandHandler::run_process_screen(const std::string &name)
+void CommandHandler::runProcessScreen(const std::string &name)
 {
-    clear_screen();
+    clearScreen();
     std::cout << "Process screen: " << name << "\n"
               << "Type 'process-smi' for process information, 'exit' to return to the main menu.\n\n";
 
     std::string line;
-    while (emulator.is_app_alive)
+    while (emulator.isAlive())
     {
         std::cout << "root:\\> " << std::flush;
 
@@ -109,186 +109,214 @@ void CommandHandler::run_process_screen(const std::string &name)
     }
 
     // Detach: the process stays in the scheduler and keeps running.
-    clear_screen();
-    print_header();
+    clearScreen();
+    printHeader();
 }
 
 void CommandHandler::run()
 {
+    printHeader();
+
     std::string line;
-
-    // Prints header once on startup
-    print_header();
-
-    // Loop until `exit` flips Emulator::is_app_alive to false
-    while (emulator.is_app_alive)
+    while (emulator.isAlive())
     {
         std::cout << "root:\\> " << std::flush;
-
         if (!std::getline(std::cin, line))
         {
             break;
         }
+        reportGenerationFailure();
 
-        if (emulator.scheduler().takeGenerationFailure())
+        std::istringstream words(line);
+        std::string command;
+        if (words >> command)
         {
-            std::cout << "Process generation stopped: unable to create a process.\n\n";
-        }
-
-        // Trim leading whitespace
-        size_t first_non_space = line.find_first_not_of(" \t");
-        if (first_non_space == std::string::npos)
-        {
-            continue; // Ignore empty inputs
-        }
-
-        // Extract command (ignoring trailing spaces or arguments)
-        size_t space_pos = line.find_first_of(" \t", first_non_space);
-        std::string cmd = line.substr(first_non_space, space_pos - first_non_space);
-
-        // Process commands
-        // initialize and exit are the only commands valid before initialization.
-        if (cmd == "initialize")
-        {
-            if (emulator.isInitialized())
-            {
-                std::cout << "System is already initialized.\n\n";
-            }
-            else
-            {
-                std::string error;
-                if (emulator.initialize("config.txt", error))
-                {
-                    std::cout << "Initialization successful.\n\n";
-                }
-                else
-                {
-                    std::cout << error << "\n\n";
-                }
-            }
-        }
-        else if (cmd == "exit")
-        {
-            emulator.exit_app();
-            break; // Closes the CLI immediately
-        }
-        else if (!emulator.isInitialized())
-        {
-            std::cout << "System not yet initialized. Type 'initialize' to load config.\n\n";
-        }
-        else if (cmd == "screen")
-        {
-            std::istringstream arguments(line.substr(first_non_space));
-            std::string subcommand;
-            std::string processName;
-            std::string extra;
-            arguments >> cmd >> subcommand;
-            if (subcommand == "-ls" && !(arguments >> extra))
-            {
-                std::cout << buildProcessReport({
-                    static_cast<std::size_t>(emulator.config().numCpu),
-                    emulator.scheduler().snapshot()});
-            }
-            else if (subcommand == "-s")
-            {
-                if (!(arguments >> processName) || (arguments >> extra))
-                {
-                    std::cout << "Usage: screen -s <process name>\n\n";
-                    continue;
-                }
-
-                // Processes only execute while the CPU threads run; start() is a no-op if they do.
-                emulator.scheduler().start(emulator.config());
-                try
-                {
-                    if (!emulator.scheduler().createProcess(processName, emulator.config()))
-                    {
-                        std::cout << "Process " << processName << " already exists.\n\n";
-                        continue;
-                    }
-                }
-                catch (const std::exception &error)
-                {
-                    std::cout << "Failed to create process " << processName << ": " << error.what() << "\n\n";
-                    continue;
-                }
-                run_process_screen(processName);
-            }
-            else if (subcommand == "-r" )
-            {
-                if (!(arguments >> processName) || (arguments >> extra))
-                {
-                    std::cout << "Usage: screen -r <process name>\n\n";
-                    continue;
-                }
-
-                const std::optional<ProcessView> process = emulator.scheduler().findActiveProcessByName(processName);
-
-                if (!process)
-                {
-                    std::cout << "Process " << processName << " not found.\n\n";
-                    continue;
-                }
-                
-                run_process_screen(processName);
-            } 
-            else
-            {
-                // Bare `screen`, unknown flags, and `screen -ls` with extra arguments.
-                std::cout << "Usage:\n"
-                             "  screen -s <process name>   Create a process and attach to it\n"
-                             "  screen -r <process name>   Reattach to a running process\n"
-                             "  screen -ls                 List running and finished processes\n\n";
-            }
-        }
-        else if (cmd == "scheduler-start")
-        {
-            if (emulator.scheduler().startGeneration(emulator.config()))
-            {
-                std::cout << "Process generation started.\n\n";
-            }
-            else
-            {
-                std::cout << "Process generation is already running.\n\n";
-            }
-        }
-        else if (cmd == "scheduler-stop")
-        {
-            if (emulator.scheduler().stopGeneration())
-            {
-                std::cout << "Process generation stopped. Existing processes will continue running.\n\n";
-            }
-            else
-            {
-                std::cout << "Process generation is not running.\n\n";
-            }
-        }
-        else if (cmd == "report-util")
-        {
-            const std::string report = buildProcessReport({
-                static_cast<std::size_t>(emulator.config().numCpu),
-                emulator.scheduler().snapshot()});
-            std::ofstream file("csopesy-log.txt");
-            file << report;
-            file.close();
-            if (file)
-            {
-                // Full path, forward slashes, as in the mockup ("C:/csopesy-log.txt").
-                std::error_code pathError;
-                const auto path = std::filesystem::absolute("csopesy-log.txt", pathError);
-                std::cout << "Report generated at "
-                          << (pathError ? std::string("csopesy-log.txt") : path.generic_string())
-                          << "!\n\n";
-            }
-            else
-            {
-                std::cout << "Failed to write csopesy-log.txt.\n\n";
-            }
-        }
-        else
-        {
-            std::cout << "Command not recognized. Please try again.\n";
-            std::cout << "\n";
+            dispatch(command, words);
         }
     }
+}
+
+void CommandHandler::dispatch(const std::string &command, std::istringstream &arguments)
+{
+    // initialize and exit are the only commands valid before initialization.
+    if (command == "initialize")
+    {
+        initializeSystem();
+    }
+    else if (command == "exit")
+    {
+        emulator.exitApp();
+    }
+    else if (!emulator.isInitialized())
+    {
+        std::cout << "System not yet initialized. Type 'initialize' to load config.\n\n";
+    }
+    else if (command == "screen")
+    {
+        handleScreen(arguments);
+    }
+    else if (command == "scheduler-start")
+    {
+        startGeneration();
+    }
+    else if (command == "scheduler-stop")
+    {
+        stopGeneration();
+    }
+    else if (command == "report-util")
+    {
+        saveReport();
+    }
+    else
+    {
+        std::cout << "Command not recognized. Please try again.\n\n";
+    }
+}
+
+void CommandHandler::reportGenerationFailure()
+{
+    if (emulator.scheduler().takeGenerationFailure())
+    {
+        std::cout << "Process generation stopped: unable to create a process.\n\n";
+    }
+}
+
+void CommandHandler::initializeSystem()
+{
+    if (emulator.isInitialized())
+    {
+        std::cout << "System is already initialized.\n\n";
+        return;
+    }
+    std::string error;
+    if (emulator.initialize("config.txt", error))
+    {
+        std::cout << "Initialization successful.\n\n";
+    }
+    else
+    {
+        std::cout << error << "\n\n";
+    }
+}
+
+void CommandHandler::handleScreen(std::istringstream &arguments)
+{
+    std::string subcommand;
+    arguments >> subcommand;
+    if (subcommand == "-ls" && hasNoMoreWords(arguments))
+    {
+        std::cout << currentReport();
+    }
+    else if (subcommand == "-s")
+    {
+        createAndAttach(arguments);
+    }
+    else if (subcommand == "-r")
+    {
+        reattach(arguments);
+    }
+    else
+    {
+        // Bare `screen`, unknown flags, and `screen -ls` with extra arguments.
+        std::cout << "Usage:\n"
+                     "  screen -s <process name>   Create a process and attach to it\n"
+                     "  screen -r <process name>   Reattach to a running process\n"
+                     "  screen -ls                 List running and finished processes\n\n";
+    }
+}
+
+void CommandHandler::createAndAttach(std::istringstream &arguments)
+{
+    std::string processName;
+    if (!(arguments >> processName) || !hasNoMoreWords(arguments))
+    {
+        std::cout << "Usage: screen -s <process name>\n\n";
+        return;
+    }
+
+    // Processes only execute while the CPU threads run; start() is a no-op if they do.
+    emulator.scheduler().start(emulator.config());
+    try
+    {
+        if (!emulator.scheduler().createProcess(processName, emulator.config()))
+        {
+            std::cout << "Process " << processName << " already exists.\n\n";
+            return;
+        }
+    }
+    catch (const std::exception &error)
+    {
+        std::cout << "Failed to create process " << processName << ": " << error.what() << "\n\n";
+        return;
+    }
+    runProcessScreen(processName);
+}
+
+void CommandHandler::reattach(std::istringstream &arguments)
+{
+    std::string processName;
+    if (!(arguments >> processName) || !hasNoMoreWords(arguments))
+    {
+        std::cout << "Usage: screen -r <process name>\n\n";
+        return;
+    }
+    if (!emulator.scheduler().findActiveProcessByName(processName))
+    {
+        std::cout << "Process " << processName << " not found.\n\n";
+        return;
+    }
+    runProcessScreen(processName);
+}
+
+void CommandHandler::startGeneration()
+{
+    if (emulator.scheduler().startGeneration(emulator.config()))
+    {
+        std::cout << "Process generation started.\n\n";
+    }
+    else
+    {
+        std::cout << "Process generation is already running.\n\n";
+    }
+}
+
+void CommandHandler::stopGeneration()
+{
+    if (emulator.scheduler().stopGeneration())
+    {
+        std::cout << "Process generation stopped. Existing processes will continue running.\n\n";
+    }
+    else
+    {
+        std::cout << "Process generation is not running.\n\n";
+    }
+}
+
+void CommandHandler::saveReport()
+{
+    std::ofstream file("csopesy-log.txt");
+    file << currentReport();
+    file.close();
+    if (!file)
+    {
+        std::cout << "Failed to write csopesy-log.txt.\n\n";
+        return;
+    }
+    // Full path, forward slashes, as in the mockup ("C:/csopesy-log.txt").
+    std::error_code pathError;
+    const auto path = std::filesystem::absolute("csopesy-log.txt", pathError);
+    std::cout << "Report generated at "
+              << (pathError ? std::string("csopesy-log.txt") : path.generic_string()) << "!\n\n";
+}
+
+std::string CommandHandler::currentReport() const
+{
+    return buildProcessReport({static_cast<std::size_t>(emulator.config().numCpu),
+                               emulator.scheduler().snapshot()});
+}
+
+bool CommandHandler::hasNoMoreWords(std::istringstream &arguments)
+{
+    std::string extra;
+    return !(arguments >> extra);
 }

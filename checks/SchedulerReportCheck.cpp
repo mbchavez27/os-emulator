@@ -172,7 +172,7 @@ void checkAllocationFailures()
     const std::string message = "Process generation stopped: unable to create a process.";
     check(automatic.find(message) != std::string::npos && automatic.find(message) == automatic.rfind(message),
           "Automatic creation failure was not reported exactly once");
-    check(!emulator.is_app_alive, "Creation failure prevented the console from accepting exit");
+    check(!emulator.isAlive(), "Creation failure prevented the console from accepting exit");
 }
 } // namespace
 
