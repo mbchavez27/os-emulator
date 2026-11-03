@@ -389,7 +389,8 @@ void Scheduler::workerLoop(std::size_t core)
             nextCoreExecutionCycles_[core] = executedCycle + 1;
             if (outcome == StepOutcome::EXECUTED)
             {
-                nextProcessExecutionCycles_[index] = executedCycle + delayPerExec_;
+                // Wait delayPerExec_ whole cycles before the next instruction; 0 runs one per cycle.
+                nextProcessExecutionCycles_[index] = executedCycle + 1 + delayPerExec_;
             }
             if (outcome == StepOutcome::SLEEPING)
             {

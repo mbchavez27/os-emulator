@@ -294,7 +294,8 @@ int main()
 
         config.numCpu = 1;
         config.quantumCycles = 8;
-        config.delayPerExec = 1;
+        // One instruction per tick, so a fresh 8-tick quantum covers 8 instructions.
+        config.delayPerExec = 0;
         Program sleeper = increments(21);
         sleeper.instructions[4] = Instruction{SleepInstruction{2}};
         bool slept = false;
@@ -348,6 +349,34 @@ int main()
             rejectedZero = true;
         }
         check(rejectedZero && !resumed.isRunning(), "Zero RR quantum must fail before starting threads");
+
+        // Spec: delay-per-exec is the number of cycles waited before the next
+        // instruction; 0 means one instruction per cycle. So delay d spaces
+        // instructions d + 1 ticks apart, and delay 1 must differ from delay 0.
+        for (const std::uint64_t delay : {std::uint64_t{1}, std::uint64_t{3}})
+        {
+            config.scheduler = SchedulerType::FCFS;
+            config.numCpu = 1;
+            config.delayPerExec = delay;
+            Program program;
+            program.instructions.assign(400, Instruction{DeclareInstruction{"x", 1}});
+            Scheduler spaced;
+            spaced.submitProcess(std::make_unique<Process>(1, "spaced", program));
+            spaced.start(config);
+            while (spaced.snapshot().front().currentLine == 0)
+            {
+                std::this_thread::yield();
+            }
+            const auto startTick = spaced.cycleCount();
+            const auto startLine = spaced.snapshot().front().currentLine;
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            const auto ticks = spaced.cycleCount() - startTick;
+            const auto executed = spaced.snapshot().front().currentLine - startLine;
+            spaced.stop();
+            check(ticks >= 4 * (delay + 1), "Delay spacing test observed too few ticks");
+            check(executed <= 1 + ticks / (delay + 1),
+                  "delay-per-exec d must space instructions d + 1 ticks apart");
+        }
         std::cout << "Scheduler quantum checks passed.\n";
     }
     catch (const std::exception &error)
