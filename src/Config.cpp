@@ -8,7 +8,8 @@
 namespace
 {
 
-constexpr uint64_t kMaxU32 = 4294967295ULL;
+/// The spec states these ranges as [1, 2^32] / [0, 2^32], upper bound inclusive.
+constexpr uint64_t kMaxSpecValue = 1ULL << 32;
 
 std::string trim(const std::string &text)
 {
@@ -118,11 +119,11 @@ bool readDelayPerExec(const std::map<std::string, std::string> &values,
 {
     if (values.count("delay-per-exec") != 0)
     {
-        return readNumber(values, "delay-per-exec", 0, kMaxU32, result, error);
+        return readNumber(values, "delay-per-exec", 0, kMaxSpecValue, result, error);
     }
     if (values.count("delays-per-exec") != 0)
     {
-        return readNumber(values, "delays-per-exec", 0, kMaxU32, result, error);
+        return readNumber(values, "delays-per-exec", 0, kMaxSpecValue, result, error);
     }
 
     error = "Missing required config key: 'delay-per-exec' (or 'delays-per-exec').";
@@ -168,29 +169,29 @@ std::optional<Config> Config::load(const std::string &path, std::string &error)
         return std::nullopt;
     }
 
-    if (!readNumber(values, "quantum-cycles", 1, kMaxU32, number, error))
+    if (!readNumber(values, "quantum-cycles", 1, kMaxSpecValue, number, error))
     {
         return std::nullopt;
     }
-    config.quantumCycles = static_cast<uint32_t>(number);
+    config.quantumCycles = number;
 
-    if (!readNumber(values, "batch-process-freq", 1, kMaxU32, number, error))
+    if (!readNumber(values, "batch-process-freq", 1, kMaxSpecValue, number, error))
     {
         return std::nullopt;
     }
-    config.batchProcessFreq = static_cast<uint32_t>(number);
+    config.batchProcessFreq = number;
 
-    if (!readNumber(values, "min-ins", 1, kMaxU32, number, error))
+    if (!readNumber(values, "min-ins", 1, kMaxSpecValue, number, error))
     {
         return std::nullopt;
     }
-    config.minIns = static_cast<uint32_t>(number);
+    config.minIns = number;
 
-    if (!readNumber(values, "max-ins", 1, kMaxU32, number, error))
+    if (!readNumber(values, "max-ins", 1, kMaxSpecValue, number, error))
     {
         return std::nullopt;
     }
-    config.maxIns = static_cast<uint32_t>(number);
+    config.maxIns = number;
 
     if (config.minIns > config.maxIns)
     {
@@ -203,7 +204,7 @@ std::optional<Config> Config::load(const std::string &path, std::string &error)
     {
         return std::nullopt;
     }
-    config.delayPerExec = static_cast<uint32_t>(number);
+    config.delayPerExec = number;
 
     error.clear();
     return config;

@@ -442,11 +442,11 @@ Every field below maps 1:1 to `include/Config.h`.
 | --- | --- | --- | --- |
 | `num-cpu` | `numCpu` | `int` | `[1, 128]` |
 | `scheduler` | `scheduler` | `SchedulerType` | `fcfs` or `rr` |
-| `quantum-cycles` | `quantumCycles` | `uint32_t` | `[1, 4294967295]` |
-| `batch-process-freq` | `batchProcessFreq` | `uint32_t` | `[1, 4294967295]` |
-| `min-ins` | `minIns` | `uint32_t` | `[1, 4294967295]` |
-| `max-ins` | `maxIns` | `uint32_t` | `[1, 4294967295]` |
-| `delay-per-exec` | `delayPerExec` | `uint32_t` | `[0, 4294967295]` |
+| `quantum-cycles` | `quantumCycles` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `batch-process-freq` | `batchProcessFreq` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `min-ins` | `minIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `max-ins` | `maxIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `delay-per-exec` | `delayPerExec` | `uint64_t` | `[0, 4294967296]` (2^32) |
 
 - `min-ins` must not exceed `max-ins`.
 - The spec's `delays-per-exec` spelling is accepted as an alias for the
@@ -525,6 +525,11 @@ src/
   scheduler lock long enough to starve the REPL. When the host cannot build
   processes as fast as `batch-process-freq` requests, the remaining batches carry
   over and generation runs behind schedule instead of blocking commands.
+- **Programs are capped at 1,000,000 instructions.** `min-ins`/`max-ins` accept
+  the spec's full `[1, 2^32]` range, but each instruction is held in memory
+  (about 360 MB per million). Creating a process whose picked size exceeds
+  `kMaxProgramInstructions` fails with `program too large`; `screen -s` reports
+  it and `scheduler-start` stops generation with an error instead of freezing.
 - **`config.txt` path is fixed** to `config.txt` in the working directory; there
   is no command-line flag for an alternate file.
 - **EOF detaches and exits.** Piping input (Ctrl+D) inside a process screen

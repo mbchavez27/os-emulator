@@ -101,6 +101,11 @@ struct Program
 /// Maps the active payload to its Op.
 Op opOf(const Instruction &instruction);
 
+/// Largest program generateProgram will build. config.txt still accepts the spec's
+/// [1, 2^32] instruction range, but each instruction is held in memory (~360 MB per
+/// million), so a larger program would exhaust RAM and freeze the scheduler.
+constexpr std::uint64_t kMaxProgramInstructions = 1'000'000;
+
 /**
  * @brief Generates a deterministic random program.
  *
@@ -108,6 +113,7 @@ Op opOf(const Instruction &instruction);
  * Every instruction node counts toward [minIns, maxIns], including FOR bodies.
  *
  * @throws std::invalid_argument if minIns == 0 or minIns > maxIns.
+ * @throws std::length_error if the picked size exceeds kMaxProgramInstructions.
  */
 Program generateProgram(const Config &config,
                         const std::string &processName,

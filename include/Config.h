@@ -20,11 +20,12 @@ struct Config
 {
     int numCpu = 0;
     SchedulerType scheduler = SchedulerType::FCFS;
-    uint32_t quantumCycles = 0;
-    uint32_t batchProcessFreq = 0;
-    uint32_t minIns = 0;
-    uint32_t maxIns = 0;
-    uint32_t delayPerExec = 0;
+    // 64-bit so the spec's inclusive upper bound of 2^32 fits.
+    uint64_t quantumCycles = 0;
+    uint64_t batchProcessFreq = 0;
+    uint64_t minIns = 0;
+    uint64_t maxIns = 0;
+    uint64_t delayPerExec = 0;
 
     /**
      * @brief Parses and validates a space-separated config file.

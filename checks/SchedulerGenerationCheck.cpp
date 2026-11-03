@@ -180,6 +180,23 @@ int main()
             }
             check(rejected && !collision.isRunning(), "Invalid generation config started CPU threads");
         }
+
+        // The spec's 2^32 ceiling is valid config, but such a program cannot fit in
+        // memory; generation must refuse it instead of allocating.
+        {
+            auto huge = config;
+            huge.minIns = huge.maxIns = std::uint64_t{1} << 32;
+            bool refused = false;
+            try
+            {
+                generateProgram(huge, "huge", 1);
+            }
+            catch (const std::length_error &)
+            {
+                refused = true;
+            }
+            check(refused, "An oversized program was not refused");
+        }
         std::cout << "Scheduler generation checks passed.\n";
     }
     catch (const std::exception &error)

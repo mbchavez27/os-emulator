@@ -107,7 +107,7 @@ Instruction makeSimple(GeneratorState &state, Op op, const std::string &processN
 }
 
 std::vector<Instruction> generateSequence(GeneratorState &state,
-                                          uint32_t budget,
+                                          uint64_t budget,
                                           int forDepth,
                                           const std::string &processName)
 {
@@ -124,9 +124,9 @@ std::vector<Instruction> generateSequence(GeneratorState &state,
 
         if (op == Op::FOR)
         {
-            const uint32_t maxBody = std::min<uint32_t>(budget - 1, kMaxForBody);
-            std::uniform_int_distribution<uint32_t> bodyPick(1, maxBody);
-            const uint32_t bodyBudget = bodyPick(state.rng);
+            const uint64_t maxBody = std::min<uint64_t>(budget - 1, kMaxForBody);
+            std::uniform_int_distribution<uint64_t> bodyPick(1, maxBody);
+            const uint64_t bodyBudget = bodyPick(state.rng);
 
             std::uniform_int_distribution<int> repeatsPick(2, 5);
 
@@ -255,9 +255,16 @@ Program generateProgram(const Config &config,
 
     GeneratorState state{std::mt19937(seed), {}, 0};
 
-    std::uniform_int_distribution<uint32_t> sizePick(config.minIns, config.maxIns);
+    std::uniform_int_distribution<uint64_t> sizePick(config.minIns, config.maxIns);
+    const uint64_t size = sizePick(state.rng);
+    if (size > kMaxProgramInstructions)
+    {
+        throw std::length_error("program too large (" + std::to_string(size) +
+                                " instructions; limit is " +
+                                std::to_string(kMaxProgramInstructions) + ")");
+    }
 
     Program program;
-    program.instructions = generateSequence(state, sizePick(state.rng), 0, processName);
+    program.instructions = generateSequence(state, size, 0, processName);
     return program;
 }

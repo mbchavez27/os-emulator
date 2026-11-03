@@ -149,9 +149,9 @@ private:
     std::condition_variable cv_;
     std::mutex lifecycleMutex_;
 
-    std::uint32_t delayPerExec_ = 0;
+    std::uint64_t delayPerExec_ = 0;
     SchedulerType schedulerType_ = SchedulerType::FCFS;
-    std::uint32_t quantumCycles_ = 0;
+    std::uint64_t quantumCycles_ = 0;
     bool generationEnabled_ = false;
     bool generationFailed_ = false;
     Config generationConfig_;
