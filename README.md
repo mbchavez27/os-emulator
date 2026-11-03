@@ -103,31 +103,38 @@ Process generation is not running.
 
 ```text
 root:\> screen -ls
-CPU utilization: 100.00%
+CPU utilization: 100%
 Cores used: 4
 Cores available: 0
 
+----------------------------------------
 Running processes:
-p01 (11/04/2026 01:17:53 AM) Core: -- 9 / 1037
-p02 (11/04/2026 01:17:53 AM) Core: -- 9 / 1168
-...
-p268 (11/04/2026 01:17:54 AM) Core: 3 1 / 1431
-...
-p547 (11/04/2026 01:17:54 AM) Core: 0 0 / 1111
-p548 (11/04/2026 01:17:54 AM) Core: 1 0 / 1933
-p549 (11/04/2026 01:17:54 AM) Core: 2 0 / 1632
-...
-p1133 (11/04/2026 01:17:55 AM) Core: -- 0 / 1348
+p563   (11/04/2026 02:02:53AM)    Core: 0      1 / 1542
+p564   (11/04/2026 02:02:53AM)    Core: 1      1 / 1447
+p565   (11/04/2026 02:02:53AM)    Core: 2      1 / 1260
+p137   (11/04/2026 02:02:52AM)    Core: 3      5 / 1734
 
 Finished processes:
-
+----------------------------------------
 ```
 
-Rows are `name (created-at) Core: <core|--> <current line> / <total lines>`;
-finished rows read `name (created-at) Finished <total> / <total>`.
-Utilization is assigned / configured cores; available is configured minus assigned.
-Ready and sleeping processes show `Core: --`. The trailing `Finished processes:`
-section is empty until a process completes.
+Once processes complete, they move to the finished section:
+
+```text
+Finished processes:
+screen_01   (11/04/2026 02:02:12AM)    Finished     25 / 25
+p02         (11/04/2026 02:02:13AM)    Finished     28 / 28
+----------------------------------------
+```
+
+The layout follows the spec mockup. Running rows are
+`name (created-at) Core: <core> <current line> / <total lines>`, sorted by core;
+finished rows are `name (created-at) Finished <total> / <total>`. Columns are
+padded to the longest listed name. Utilization is assigned / configured cores,
+shown as a whole percentage (`100%`) or with two decimals when fractional
+(`33.33%`). As in the mockup, "running" means currently on a core: processes
+waiting in the ready queue or sleeping are not listed until they run again or
+finish, and stay reachable with `screen -r`.
 
 ### `screen -s <name>` and `process-smi`
 
@@ -223,21 +230,27 @@ Process ghost not found.
 
 ```text
 root:\> report-util
-Report saved to csopesy-log.txt.
+Report generated at /path/to/os-emulator/csopesy-log.txt!
 ```
 
-`csopesy-log.txt` contains exactly what `screen -ls` prints at that moment:
+The message shows the file's absolute path (forward slashes, as in the mockup's
+`C:/csopesy-log.txt`). `csopesy-log.txt` contains exactly what `screen -ls`
+prints at that moment:
 
 ```text
-CPU utilization: 100.00%
+CPU utilization: 100%
 Cores used: 4
 Cores available: 0
 
+----------------------------------------
 Running processes:
-p01 (11/04/2026 01:17:53 AM) Core: -- 9 / 1037
-...
-Finished processes:
+p563   (11/04/2026 02:02:53AM)    Core: 0      1 / 1542
+p564   (11/04/2026 02:02:53AM)    Core: 1      1 / 1447
+p565   (11/04/2026 02:02:53AM)    Core: 2      1 / 1260
+p137   (11/04/2026 02:02:52AM)    Core: 3      5 / 1734
 
+Finished processes:
+----------------------------------------
 ```
 
 ### `exit`
@@ -293,8 +306,7 @@ report-util
 exit            <- shuts the emulator down
 ```
 
-Transcript of a real run (trimmed — `screen -ls` prints one row per generated
-process; this run had 1133 after two seconds):
+Transcript of a real run (headers trimmed):
 
 ```text
 root:\> initialize
@@ -304,22 +316,19 @@ root:\> scheduler-start
 Process generation started.
 
 root:\> screen -ls
-CPU utilization: 100.00%
+CPU utilization: 100%
 Cores used: 4
 Cores available: 0
 
+----------------------------------------
 Running processes:
-p01 (11/04/2026 01:17:53 AM) Core: -- 9 / 1037
-...
-p268 (11/04/2026 01:17:54 AM) Core: 3 1 / 1431
-...
-p547 (11/04/2026 01:17:54 AM) Core: 0 0 / 1111
-p548 (11/04/2026 01:17:54 AM) Core: 1 0 / 1933
-p549 (11/04/2026 01:17:54 AM) Core: 2 0 / 1632
-...
-p1133 (11/04/2026 01:17:55 AM) Core: -- 0 / 1348
+p563   (11/04/2026 02:02:53AM)    Core: 0      1 / 1542
+p564   (11/04/2026 02:02:53AM)    Core: 1      1 / 1447
+p565   (11/04/2026 02:02:53AM)    Core: 2      1 / 1260
+p137   (11/04/2026 02:02:52AM)    Core: 3      5 / 1734
 
 Finished processes:
+----------------------------------------
 
 root:\> screen -s demo1
 Process screen: demo1
@@ -382,7 +391,7 @@ De La Calzada, Wanda
 --------------------------------------------
 
 root:\> report-util
-Report saved to csopesy-log.txt.
+Report generated at /path/to/os-emulator/csopesy-log.txt!
 
 root:\> exit
 ```
@@ -405,8 +414,8 @@ Two behaviors to note:
 
 Both reports use one formatter over a copied scheduler snapshot. Utilization is
 assigned cores / configured cores; available cores are configured cores minus
-assigned cores. Ready and sleeping processes appear in the running section with
-`Core: --`. Timestamps record process creation in local time; finished rows show
+assigned cores. Only processes on a core appear in the running section; ready and
+sleeping processes are omitted. Timestamps record process creation in local time; finished rows show
 `Finished` and total / total. Separate commands capture separate moments while
 processes advance; formatting the same snapshot always produces identical output.
 

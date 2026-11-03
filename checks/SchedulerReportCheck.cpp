@@ -185,10 +185,11 @@ int main()
         Emulator emulator;
         Scheduler &scheduler = emulator.scheduler();
         const std::string empty = buildProcessReport({4, scheduler.snapshot()});
-        check(empty == "CPU utilization: 0.00%\nCores used: 0\nCores available: 4\n\n"
-                       "Running processes:\n\nFinished processes:\n\n",
+        const std::string rule = "----------------------------------------\n";
+        check(empty == "CPU utilization: 0%\nCores used: 0\nCores available: 4\n\n" + rule +
+                           "Running processes:\n\nFinished processes:\n" + rule + "\n",
               "Empty sections or idle utilization are incorrect");
-        check(buildProcessReport({}).find("CPU utilization: 0.00%") == 0,
+        check(buildProcessReport({}).find("CPU utilization: 0%") == 0,
               "Zero cores must not divide by zero");
 
         Program program;
@@ -196,8 +197,9 @@ int main()
         program.instructions.front() = Instruction{SleepInstruction{3}};
         scheduler.submitProcess(std::make_unique<Process>(1, "p01", program));
         const auto queued = scheduler.snapshot();
-        check(buildProcessReport({4, queued}).find("Core: -- 0 / 32") != std::string::npos,
-              "Queued processes must be visible without using a core");
+        // "Running" means on a core, as in the mockup; a queued process is not listed.
+        check(buildProcessReport({4, queued}).find("p01") == std::string::npos,
+              "A queued process was listed as running");
         auto timestamped = queued;
         std::tm timestamp{};
         timestamp.tm_year = 126;
@@ -208,9 +210,12 @@ int main()
         timestamp.tm_sec = 5;
         timestamp.tm_isdst = -1;
         timestamped.front().startedAt = std::chrono::system_clock::from_time_t(std::mktime(&timestamp));
+        timestamped.front().core = 0;
+        timestamped.front().state = ProcessState::RUNNING;
         check(buildProcessReport({4, timestamped}).find(
-                  "p01 (01/02/2026 03:04:05 PM) Core: -- 0 / 32") != std::string::npos,
-              "Process name or start timestamp is missing");
+                  "Running processes:\np01   (01/02/2026 03:04:05PM)    Core: 0      0 / 32\n") !=
+                  std::string::npos,
+              "Running row does not match the mockup layout");
         Config config;
         config.numCpu = 4;
         config.delayPerExec = 2;
@@ -219,7 +224,7 @@ int main()
             return coresUsed(views) == 1;
         });
         const std::string partialReport = buildProcessReport({4, partial});
-        check(partialReport.find("CPU utilization: 25.00%\nCores used: 1\nCores available: 3") == 0,
+        check(partialReport.find("CPU utilization: 25%\nCores used: 1\nCores available: 3") == 0,
               "Partial utilization is incorrect");
         check(buildProcessReport({3, partial}).find("CPU utilization: 33.33%") == 0,
               "Fractional utilization was truncated");
@@ -233,7 +238,7 @@ int main()
             return coresUsed(views) == 4;
         });
         check(buildProcessReport({4, full}).find(
-                  "CPU utilization: 100.00%\nCores used: 4\nCores available: 0") == 0,
+                  "CPU utilization: 100%\nCores used: 4\nCores available: 0") == 0,
               "Full utilization is incorrect");
 
         // Validate each copy while workers advance, including completion transitions.
@@ -261,7 +266,7 @@ int main()
         scheduler.stop();
         check(liveSamples > 0, "No active snapshots were checked");
         check(buildProcessReport({4, partial}) == partialReport, "Snapshot mutated after capture");
-        check(buildProcessReport({4, finished}).find("Finished 32 / 32") != std::string::npos,
+        check(buildProcessReport({4, finished}).find("Finished     32 / 32") != std::string::npos,
               "Finished rows must show total / total");
 
         std::istringstream commands(

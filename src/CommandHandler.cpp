@@ -5,6 +5,7 @@
 #include "ProcessReport.h"
 #include "ProcessSmi.h"
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -272,7 +273,12 @@ void CommandHandler::run()
             file.close();
             if (file)
             {
-                std::cout << "Report saved to csopesy-log.txt.\n\n";
+                // Full path, forward slashes, as in the mockup ("C:/csopesy-log.txt").
+                std::error_code pathError;
+                const auto path = std::filesystem::absolute("csopesy-log.txt", pathError);
+                std::cout << "Report generated at "
+                          << (pathError ? std::string("csopesy-log.txt") : path.generic_string())
+                          << "!\n\n";
             }
             else
             {
