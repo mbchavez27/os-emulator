@@ -8,7 +8,7 @@ Interactive REPL with validated configuration loading, FCFS / round-robin schedu
 process generation, and a mock `screen` multiplexer. `initialize` reads `config.txt`; until it
 succeeds, every command except `initialize` and `exit` is rejected.
 
-## Command reference
+## Usage
 
 | Command | Behavior |
 | --- | --- |
@@ -35,6 +35,260 @@ Commands inside a process screen:
 | `process-smi` | Prints the process name, ID, logs, and progress (`Current instruction line` / `Lines of code`), or `Finished!` when the process is done. |
 | `exit` | Detaches and returns to the main menu (it does **not** shut the emulator down). |
 | anything else | `Unknown command '<input>'. Available commands: process-smi, exit` |
+
+## Scheduling behavior
+
+Both reports use one formatter over a copied scheduler snapshot. Utilization is
+assigned cores / configured cores; available cores are configured cores minus
+assigned cores. Only processes on a core appear in the running section; ready and
+sleeping processes are omitted. Timestamps record process creation in local time; finished rows show
+`Finished` and total / total. Separate commands capture separate moments while
+processes advance; formatting the same snapshot always produces identical output.
+
+`scheduler "fcfs"` keeps each process on its core until it finishes or sleeps;
+`quantum-cycles` has no effect. `scheduler "rr"` gives each dispatched process a
+fresh quantum, measured in CPU ticks from when its worker begins the slice. Expiry moves it
+to the back of the ready queue with its program position intact. Sleeping releases
+the core, and waking starts a fresh quantum on the next dispatch. RR spaces
+instructions within a time slice by at least one tick when `delay-per-exec` is
+zero. Quantum expiry lets another process run, but each process keeps its next
+permitted execution tick across preemption, core changes, and CPU stop/resume.
+Time spent off-core counts toward the execution delay.
+
+`scheduler-start` creates one process per `batch-process-freq` CPU ticks, beginning
+after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,
+`p99`, `p100`, ...); IDs and names continue across stop/start cycles. Programs use
+the configured instruction bounds and their process ID as the generator seed.
+Starting twice keeps the original generation schedule. `scheduler-stop` stops
+creation synchronously and leaves the CPU running so existing work can finish.
+Restarting generation waits a fresh interval and keeps process history.
+
+Processes release their variable storage when they finish. Failed manual creation
+prints an error and returns to the main menu. Failed automatic creation stops
+generation and reports an error on the next main-menu command; existing processes
+continue running. `scheduler-start` can retry generation after the failure.
+
+To see generated processes, enter `initialize`, then `scheduler-start`, wait at
+least one batch interval, and enter `screen -ls`. Use `scheduler-stop` to stop
+adding work; subsequent reports show the remaining work progressing to completion.
+
+## Configuration (`config.txt`)
+
+`initialize` reads `config.txt` from the current working directory. The file is
+space-separated, one key per line; values may be quoted (`scheduler "rr"`).
+Every field below maps 1:1 to `include/Config.h`.
+
+| Key | `Config.h` field | Type | Range / values |
+| --- | --- | --- | --- |
+| `num-cpu` | `numCpu` | `int` | `[1, 128]` |
+| `scheduler` | `scheduler` | `SchedulerType` | `fcfs` or `rr` |
+| `quantum-cycles` | `quantumCycles` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `batch-process-freq` | `batchProcessFreq` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `min-ins` | `minIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `max-ins` | `maxIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
+| `delay-per-exec` | `delayPerExec` | `uint64_t` | `[0, 4294967296]` (2^32) |
+
+- `min-ins` must not exceed `max-ins`.
+- `delay-per-exec d` makes a process wait `d` whole CPU cycles before its next
+  instruction, staying on its core (busy-waiting): `0` runs one instruction per
+  cycle, `1` one every 2 cycles, `d` one every `d + 1` cycles.
+- The spec's `delays-per-exec` spelling is accepted as an alias for the
+  mockup's `delay-per-exec`.
+- Unknown keys are ignored; blank lines and `#` comments are skipped.
+- Missing keys fail with `Missing required config key: '<key>'.`
+- `config.txt` is read relative to where the executable runs, not where it lives.
+
+Invalid input keeps the system uninitialized and reports the offending key:
+
+```text
+Config key 'num-cpu' must be in [1, 128], got '0'.
+```
+
+## Project structure
+
+Every file tracked in git (`build/`, `csopesy-log.txt`, and `Testing/` are
+generated and gitignored):
+
+```text
+.gitignore                  # ignores build/, logs, binaries, IDE files
+CMakeLists.txt              # emulator_core lib, os-emulator CLI, 5 ctest checks, warnings
+LICENSE                     # MIT
+README.md                   # this file
+config.txt                  # sample configuration (read from the working directory)
+checks/
+  ProcessScreenCheck.cpp    # end-to-end REPL check: screen -s / process-smi / detach
+  ProcessSmiCheck.cpp       # process-smi formatting incl. Finished! output
+  SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, drain
+  SchedulerQuantumCheck.cpp # RR quantum preemption, sleep/wake budgets
+  SchedulerReportCheck.cpp  # report-util + screen -ls formatting across load levels
+include/
+  AsciiArt.h                # convert_to_ascii() declaration, ASCII_ROWS constant
+  CommandHandler.h          # REPL loop declaration, borrows Emulator by reference
+  Config.h                  # SchedulerType + validated configuration struct
+  ConsoleColors.h           # ANSI color constants (header-only)
+  Emulator.h                # liveness state + loaded configuration + shutdown
+  EmulatorProcess.h         # process entity + step states (avoids Windows process.h)
+  Instruction.h             # Op, Instruction, Program, generator declaration
+  ProcessReport.h           # shared snapshot report formatter
+  ProcessSmi.h              # process-smi formatter declaration
+  Scheduler.h               # ProcessView + FCFS/RR scheduler (clock, dispatch, workers)
+specs/
+  csopesy_emulator_specifications.md  # machine project spec
+src/
+  AsciiArt.cpp              # 5-row blocky font (A-Z, 0-9, space, ! ? .)
+  CommandHandler.cpp        # command parsing, gating, dispatch, process screen
+  Config.cpp                # config.txt parsing and validation
+  Instruction.cpp           # seeded random program generator + program printing
+  Process.cpp               # flattening, step dispatch, FOR frame stack, uint16 clamp
+  ProcessReport.cpp         # CPU utilization and process table formatting
+  ProcessSmi.cpp            # process-smi logs/progress formatting
+  Scheduler.cpp             # tick clock, dispatch, workers, generation, sleepers
+  main.cpp                  # owns Emulator, runs CommandHandler
+```
+
+## Dependencies
+
+- CMake >= 3.16
+- C++17 compiler: GCC (tested 15.2.1), Clang / Apple Clang, or MSVC
+- No third-party libraries
+- Entering and leaving a process screen clears the terminal with `system("clear")` on Fedora/macOS, `system("cls")` on Windows
+- Colors use ANSI escape codes; needs an ANSI-capable terminal (Terminal/iTerm2 on macOS, GNOME Terminal/Konsole on Fedora, Windows Terminal or modern cmd/PowerShell on Windows)
+
+## Prerequisites
+
+### Fedora
+
+```bash
+sudo dnf install cmake gcc-c++ make
+```
+
+Optional Clang alternative:
+
+```bash
+sudo dnf install cmake clang make
+```
+
+Single-config generator (Makefiles/Ninja), so the binary lands at `build/os-emulator`.
+
+### macOS
+
+```bash
+xcode-select --install
+brew install cmake
+```
+
+Uses Apple Clang by default. Single-config generator, so the binary lands at `build/os-emulator`. Any ANSI-capable terminal (Terminal.app, iTerm2) works.
+
+### Windows
+
+Install via winget (PowerShell, admin):
+
+```powershell
+winget install Kitware.CMake Git.Git Microsoft.VisualStudio.2022.Community
+```
+
+Select the `Desktop development with C++` workload in the Visual Studio installer. Alternatively, install only Build Tools for Visual Studio with the same workload.
+
+MSVC is a multi-configuration generator, so the binary lands at `build/Debug/os-emulator.exe` by default, or `build/Release/os-emulator.exe` when building with `--config Release`. Use Windows Terminal for ANSI colors.
+
+## How to run
+
+> `build/` is gitignored and does not exist after a fresh clone. `cmake --build` never configures, so `cmake -S . -B build` must run once before any build. Skipping it fails with `build is not a directory`.
+
+### Fedora
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/os-emulator
+```
+
+### macOS
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/os-emulator
+```
+
+### Windows (Git Bash)
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/Debug/os-emulator.exe
+```
+
+Release build:
+
+```bash
+cmake --build build --config Release
+./build/Release/os-emulator.exe
+```
+
+### Windows (PowerShell)
+
+```powershell
+cmake -S . -B build
+cmake --build build
+.\build\Debug\os-emulator.exe
+```
+
+Release build:
+
+```powershell
+cmake --build build --config Release
+.\build\Release\os-emulator.exe
+```
+
+### One-step build + run
+
+Requires the configure step above to have run at least once:
+
+```bash
+cmake --build build --target run
+```
+
+With MSVC, specify the config explicitly:
+
+```bash
+cmake --build build --config Release --target run
+```
+
+### Quick non-interactive check
+
+Run from the repository root so `config.txt` is found:
+
+Fedora / macOS:
+
+```bash
+printf "initialize\nscreen\nfoo\nexit\n" | ./build/os-emulator
+```
+
+Windows (Git Bash):
+
+```bash
+printf "initialize\nscreen\nfoo\nexit\n" | ./build/Debug/os-emulator.exe
+```
+
+Windows (PowerShell):
+
+```powershell
+"initialize", "screen", "foo", "exit" | .\build\Debug\os-emulator.exe
+```
+
+### Tests
+
+The build includes scheduler/report checks covering idle, partial, and full
+utilization, live snapshots, report commands, RR rotation, sleep/wake budgets,
+stop/resume, FCFS/RR output comparisons on identical seeded programs, dummy
+generation cadence, naming, bounds, restarts, draining after generation stops,
+`process-smi` formatting (including `Finished!`), and an end-to-end
+`screen -s` / `process-smi` / detach REPL pass. Run them with:
+
+```bash
+ctest --test-dir build -C Debug --output-on-failure
+```
 
 ## Command examples
 
@@ -408,277 +662,5 @@ Two behaviors to note:
 - `demo1` stays at instruction line 0 with empty logs because with the sample
   config (`batch-process-freq 1`, `delay-per-exec 0`) the generator creates
   processes faster than 4 cores can drain them, and `screen -s` queues at the
-  back. See Known limitations.
-
-## Scheduling behavior
-
-Both reports use one formatter over a copied scheduler snapshot. Utilization is
-assigned cores / configured cores; available cores are configured cores minus
-assigned cores. Only processes on a core appear in the running section; ready and
-sleeping processes are omitted. Timestamps record process creation in local time; finished rows show
-`Finished` and total / total. Separate commands capture separate moments while
-processes advance; formatting the same snapshot always produces identical output.
-
-`scheduler "fcfs"` keeps each process on its core until it finishes or sleeps;
-`quantum-cycles` has no effect. `scheduler "rr"` gives each dispatched process a
-fresh quantum, measured in CPU ticks from when its worker begins the slice. Expiry moves it
-to the back of the ready queue with its program position intact. Sleeping releases
-the core, and waking starts a fresh quantum on the next dispatch. RR spaces
-instructions within a time slice by at least one tick when `delay-per-exec` is
-zero. Quantum expiry lets another process run, but each process keeps its next
-permitted execution tick across preemption, core changes, and CPU stop/resume.
-Time spent off-core counts toward the execution delay.
-
-`scheduler-start` creates one process per `batch-process-freq` CPU ticks, beginning
-after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,
-`p99`, `p100`, ...); IDs and names continue across stop/start cycles. Programs use
-the configured instruction bounds and their process ID as the generator seed.
-Starting twice keeps the original generation schedule. `scheduler-stop` stops
-creation synchronously and leaves the CPU running so existing work can finish.
-Restarting generation waits a fresh interval and keeps process history.
-
-Processes release their variable storage when they finish. Failed manual creation
-prints an error and returns to the main menu. Failed automatic creation stops
-generation and reports an error on the next main-menu command; existing processes
-continue running. `scheduler-start` can retry generation after the failure.
-
-To see generated processes, enter `initialize`, then `scheduler-start`, wait at
-least one batch interval, and enter `screen -ls`. Use `scheduler-stop` to stop
-adding work; subsequent reports show the remaining work progressing to completion.
-
-## Configuration (`config.txt`)
-
-`initialize` reads `config.txt` from the current working directory. The file is
-space-separated, one key per line; values may be quoted (`scheduler "rr"`).
-Every field below maps 1:1 to `include/Config.h`.
-
-| Key | `Config.h` field | Type | Range / values |
-| --- | --- | --- | --- |
-| `num-cpu` | `numCpu` | `int` | `[1, 128]` |
-| `scheduler` | `scheduler` | `SchedulerType` | `fcfs` or `rr` |
-| `quantum-cycles` | `quantumCycles` | `uint64_t` | `[1, 4294967296]` (2^32) |
-| `batch-process-freq` | `batchProcessFreq` | `uint64_t` | `[1, 4294967296]` (2^32) |
-| `min-ins` | `minIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
-| `max-ins` | `maxIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
-| `delay-per-exec` | `delayPerExec` | `uint64_t` | `[0, 4294967296]` (2^32) |
-
-- `min-ins` must not exceed `max-ins`.
-- `delay-per-exec d` makes a process wait `d` whole CPU cycles before its next
-  instruction, staying on its core (busy-waiting): `0` runs one instruction per
-  cycle, `1` one every 2 cycles, `d` one every `d + 1` cycles.
-- The spec's `delays-per-exec` spelling is accepted as an alias for the
-  mockup's `delay-per-exec`.
-- Unknown keys are ignored; blank lines and `#` comments are skipped.
-- Missing keys fail with `Missing required config key: '<key>'.`
-- `config.txt` is read relative to where the executable runs, not where it lives.
-
-Invalid input keeps the system uninitialized and reports the offending key:
-
-```text
-Config key 'num-cpu' must be in [1, 128], got '0'.
-```
-
-## Project structure
-
-Every file tracked in git (`build/`, `csopesy-log.txt`, and `Testing/` are
-generated and gitignored):
-
-```text
-.gitignore                  # ignores build/, logs, binaries, IDE files
-CMakeLists.txt              # emulator_core lib, os-emulator CLI, 5 ctest checks, warnings
-LICENSE                     # MIT
-README.md                   # this file
-config.txt                  # sample configuration (read from the working directory)
-checks/
-  ProcessScreenCheck.cpp    # end-to-end REPL check: screen -s / process-smi / detach
-  ProcessSmiCheck.cpp       # process-smi formatting incl. Finished! output
-  SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, drain
-  SchedulerQuantumCheck.cpp # RR quantum preemption, sleep/wake budgets
-  SchedulerReportCheck.cpp  # report-util + screen -ls formatting across load levels
-include/
-  AsciiArt.h                # convert_to_ascii() declaration, ASCII_ROWS constant
-  CommandHandler.h          # REPL loop declaration, borrows Emulator by reference
-  Config.h                  # SchedulerType + validated configuration struct
-  ConsoleColors.h           # ANSI color constants (header-only)
-  Emulator.h                # liveness state + loaded configuration + shutdown
-  EmulatorProcess.h         # process entity + step states (avoids Windows process.h)
-  Instruction.h             # Op, Instruction, Program, generator declaration
-  ProcessReport.h           # shared snapshot report formatter
-  ProcessSmi.h              # process-smi formatter declaration
-  Scheduler.h               # ProcessView + FCFS/RR scheduler (clock, dispatch, workers)
-specs/
-  csopesy_emulator_specifications.md  # machine project spec
-src/
-  AsciiArt.cpp              # 5-row blocky font (A-Z, 0-9, space, ! ? .)
-  CommandHandler.cpp        # command parsing, gating, dispatch, process screen
-  Config.cpp                # config.txt parsing and validation
-  Instruction.cpp           # seeded random program generator + program printing
-  Process.cpp               # flattening, step dispatch, FOR frame stack, uint16 clamp
-  ProcessReport.cpp         # CPU utilization and process table formatting
-  ProcessSmi.cpp            # process-smi logs/progress formatting
-  Scheduler.cpp             # tick clock, dispatch, workers, generation, sleepers
-  main.cpp                  # owns Emulator, runs CommandHandler
-```
-
-## Known limitations
-
-- **Sample config overloads the CPU.** `batch-process-freq 1` with
-  `delay-per-exec 0` creates a process every tick while 4 cores run one
-  instruction per tick each, so the ready queue grows without bound. A process
-  created by `screen -s` after `scheduler-start` queues behind that backlog and
-  reports `Current instruction line: 0` with empty logs for a long time. Use a
-  larger `batch-process-freq`, a smaller `min-ins`/`max-ins`, or skip
-  `scheduler-start` to see live logs immediately.
-- **A CPU tick is paced at ~1 ms** (`kCycleInterval`) instead of the spec
-  pseudocode's unthrottled loop. Each pass still counts exactly one tick; the
-  pause keeps tick-based settings (`SLEEP`, `delay-per-exec`, `quantum-cycles`,
-  `batch-process-freq`) at a usable speed and avoids pinning a core at 100%.
-- **Programs are capped at 1,000,000 instructions.** `min-ins`/`max-ins` accept
-  the spec's full `[1, 2^32]` range, but each instruction is held in memory
-  (about 360 MB per million). Creating a process whose picked size exceeds
-  `kMaxProgramInstructions` fails with `program too large`; `screen -s` reports
-  it and `scheduler-start` stops generation with an error instead of freezing.
-
-## Dependencies
-
-- CMake >= 3.16
-- C++17 compiler: GCC (tested 15.2.1), Clang / Apple Clang, or MSVC
-- No third-party libraries
-- Entering and leaving a process screen clears the terminal with `system("clear")` on Fedora/macOS, `system("cls")` on Windows
-- Colors use ANSI escape codes; needs an ANSI-capable terminal (Terminal/iTerm2 on macOS, GNOME Terminal/Konsole on Fedora, Windows Terminal or modern cmd/PowerShell on Windows)
-
-## Prerequisites
-
-### Fedora
-
-```bash
-sudo dnf install cmake gcc-c++ make
-```
-
-Optional Clang alternative:
-
-```bash
-sudo dnf install cmake clang make
-```
-
-Single-config generator (Makefiles/Ninja), so the binary lands at `build/os-emulator`.
-
-### macOS
-
-```bash
-xcode-select --install
-brew install cmake
-```
-
-Uses Apple Clang by default. Single-config generator, so the binary lands at `build/os-emulator`. Any ANSI-capable terminal (Terminal.app, iTerm2) works.
-
-### Windows
-
-Install via winget (PowerShell, admin):
-
-```powershell
-winget install Kitware.CMake Git.Git Microsoft.VisualStudio.2022.Community
-```
-
-Select the `Desktop development with C++` workload in the Visual Studio installer. Alternatively, install only Build Tools for Visual Studio with the same workload.
-
-MSVC is a multi-configuration generator, so the binary lands at `build/Debug/os-emulator.exe` by default, or `build/Release/os-emulator.exe` when building with `--config Release`. Use Windows Terminal for ANSI colors.
-
-## How to run
-
-> `build/` is gitignored and does not exist after a fresh clone. `cmake --build` never configures, so `cmake -S . -B build` must run once before any build. Skipping it fails with `build is not a directory`.
-
-### Fedora
-
-```bash
-cmake -S . -B build
-cmake --build build
-./build/os-emulator
-```
-
-### macOS
-
-```bash
-cmake -S . -B build
-cmake --build build
-./build/os-emulator
-```
-
-### Windows (Git Bash)
-
-```bash
-cmake -S . -B build
-cmake --build build
-./build/Debug/os-emulator.exe
-```
-
-Release build:
-
-```bash
-cmake --build build --config Release
-./build/Release/os-emulator.exe
-```
-
-### Windows (PowerShell)
-
-```powershell
-cmake -S . -B build
-cmake --build build
-.\build\Debug\os-emulator.exe
-```
-
-Release build:
-
-```powershell
-cmake --build build --config Release
-.\build\Release\os-emulator.exe
-```
-
-### One-step build + run
-
-Requires the configure step above to have run at least once:
-
-```bash
-cmake --build build --target run
-```
-
-With MSVC, specify the config explicitly:
-
-```bash
-cmake --build build --config Release --target run
-```
-
-### Quick non-interactive check
-
-Run from the repository root so `config.txt` is found:
-
-Fedora / macOS:
-
-```bash
-printf "initialize\nscreen\nfoo\nexit\n" | ./build/os-emulator
-```
-
-Windows (Git Bash):
-
-```bash
-printf "initialize\nscreen\nfoo\nexit\n" | ./build/Debug/os-emulator.exe
-```
-
-Windows (PowerShell):
-
-```powershell
-"initialize", "screen", "foo", "exit" | .\build\Debug\os-emulator.exe
-```
-
-### Tests
-
-The build includes scheduler/report checks covering idle, partial, and full
-utilization, live snapshots, report commands, RR rotation, sleep/wake budgets,
-stop/resume, FCFS/RR output comparisons on identical seeded programs, dummy
-generation cadence, naming, bounds, restarts, draining after generation stops,
-`process-smi` formatting (including `Finished!`), and an end-to-end
-`screen -s` / `process-smi` / detach REPL pass. Run them with:
-
-```bash
-ctest --test-dir build -C Debug --output-on-failure
-```
+  back. Use a larger `batch-process-freq` or skip `scheduler-start` to see live
+  logs immediately.
