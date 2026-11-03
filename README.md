@@ -1,28 +1,384 @@
 # os-emulator
 
-CSOPESY command-line OS emulator. MCO1 is being built phase by phase.
+CSOPESY command-line OS emulator.
 
 ## What it is right now
 
-Interactive REPL with validated configuration loading, FCFS / round-robin scheduling, and process
-reports. `initialize` reads `config.txt`; until it succeeds, every command except
-`initialize` and `exit` is rejected. Manual process creation and screen attachment commands
-are not implemented yet.
+Interactive REPL with validated configuration loading, FCFS / round-robin scheduling, dummy
+process generation, and a mock `screen` multiplexer. `initialize` reads `config.txt`; until it
+succeeds, every command except `initialize` and `exit` is rejected.
 
-Recognized commands:
+## Command reference
 
-| Command | Current behavior |
+| Command | Behavior |
 | --- | --- |
-| `initialize` | Loads and validates `config.txt` |
-| `screen -ls` | Prints CPU utilization, core availability, and running/finished process rows |
-| Other `screen` commands | Stub (requires initialization) |
-| `scheduler-start` | Starts dummy process generation and CPU threads if needed |
-| `scheduler-stop` | Stops generation; queued and running processes continue to completion |
-| `report-util` | Saves the same report format to `csopesy-log.txt`, replacing the previous report |
-| `clear` | Clears console via `system("clear"/"cls")`, re-prints header |
-| `exit` | Stops generation and all CPU threads, then exits the loop |
+| `initialize` | Loads and validates `config.txt`. Prints `Initialization successful.` or the offending key. Repeated calls print `System is already initialized.` |
+| `scheduler-start` | Starts dummy process generation (one process per `batch-process-freq` CPU ticks) and the CPU threads if needed. |
+| `scheduler-stop` | Stops generation synchronously; queued and running processes continue to completion. |
+| `screen -ls` | Prints CPU utilization, core counts, and running/finished process rows. |
+| `screen -s <name>` | Creates process `<name>` and attaches the console to its process screen. |
+| `screen -r <name>` | Reattaches to an existing unfinished process; `Process <name> not found.` for missing or finished names. |
+| `report-util` | Writes the same report as `screen -ls` to `csopesy-log.txt`, replacing the previous report. |
+| `clear` | Clears the console via `system("clear"/"cls")` and re-prints the header. |
+| `exit` | Stops generation and all CPU threads, then ends the loop. |
+| anything else | `Command not recognized. Please try again.` |
 
-Unknown input prints `Command not recognized. Please try again.` Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits.
+Empty lines are ignored. EOF (Ctrl+D / Ctrl+Z) also exits. The main-menu prompt is
+`Enter a command: `.
+
+Inside a process screen the prompt is `root:\> `:
+
+| Command | Behavior |
+| --- | --- |
+| `process-smi` | Prints the process name, ID, logs, and progress (`Current instruction line` / `Lines of code`), or `Finished!` when the process is done. |
+| `exit` | Detaches and returns to the main menu (it does **not** shut the emulator down). |
+| anything else | `Unknown command '<input>'. Available commands: process-smi, exit` |
+
+## Command examples
+
+Outputs below come from a real run using `config.txt` in this repository
+(`num-cpu 4`, `scheduler "rr"`, `quantum-cycles 5`, `batch-process-freq 1`,
+`min-ins 1000`, `max-ins 2000`, `delay-per-exec 0`). Timestamps, IDs, line
+counts, and the number of generated processes vary between runs.
+
+Every run starts with the header:
+
+```text
+   ___    ___     ___     ___    ___    ___   __   __
+  / __|  / __|   / _ \   | _ \  | __|  / __|  \ \ / /
+ | (__   \__ \  | (_) |  |  _/  | _|   \__ \   \ V /
+  \___|  |___/   \___/   |_|    |___|  |___/    |_|
+
+Hello, Welcome to CSOPESY commandline!
+Type 'exit' to quit, 'clear' to clear the screen
+
+** IMPORTANT: Type 'initialize' to load config and start system **
+```
+
+### `initialize`
+
+```text
+Enter a command: initialize
+Initialization successful.
+```
+
+Invalid config keeps the system uninitialized and reports the offending key:
+
+```text
+Enter a command: initialize
+Config key 'num-cpu' must be in [1, 128], got '0'.
+```
+
+Calling it twice:
+
+```text
+Enter a command: initialize
+System is already initialized.
+```
+
+### `scheduler-start` / `scheduler-stop`
+
+```text
+Enter a command: scheduler-start
+Process generation started.
+
+Enter a command: scheduler-start
+Process generation is already running.
+
+Enter a command: scheduler-stop
+Process generation stopped. Existing processes will continue running.
+
+Enter a command: scheduler-stop
+Process generation is not running.
+```
+
+### `screen -ls`
+
+```text
+Enter a command: screen -ls
+CPU utilization: 100.00%
+Cores used: 4
+Cores available: 0
+
+Running processes:
+p01 (11/04/2026 01:17:53 AM) Core: -- 9 / 1037
+p02 (11/04/2026 01:17:53 AM) Core: -- 9 / 1168
+...
+p268 (11/04/2026 01:17:54 AM) Core: 3 1 / 1431
+...
+p547 (11/04/2026 01:17:54 AM) Core: 0 0 / 1111
+p548 (11/04/2026 01:17:54 AM) Core: 1 0 / 1933
+p549 (11/04/2026 01:17:54 AM) Core: 2 0 / 1632
+...
+p1133 (11/04/2026 01:17:55 AM) Core: -- 0 / 1348
+
+Finished processes:
+
+```
+
+Rows are `name (created-at) Core: <core|--> <current line> / <total lines>`;
+finished rows read `name (created-at) Finished <total> / <total>`.
+Utilization is assigned / configured cores; available is configured minus assigned.
+Ready and sleeping processes show `Core: --`. The trailing `Finished processes:`
+section is empty until a process completes.
+
+### `screen -s <name>` and `process-smi`
+
+Attaching to a process while the generator is running (see the note in the
+walkthrough — with the sample config the process queues behind the generated
+backlog):
+
+```text
+Enter a command: screen -s demo1
+Process screen: demo1
+Type 'process-smi' for process information, 'exit' to return to the main menu.
+
+root:\> process-smi
+Process name: demo1
+ID: 1390
+Logs:
+
+Current instruction line: 0
+Lines of code: 1048
+
+root:\> exit
+```
+
+`exit` clears the screen, reprints the header, and returns to `Enter a command: `.
+
+With no generator running, `process-smi` shows live `PRINT` output with the core
+and execution timestamp of each log line:
+
+```text
+Enter a command: screen -s demo1
+Process screen: demo1
+Type 'process-smi' for process information, 'exit' to return to the main menu.
+
+root:\> process-smi
+Process name: demo1
+ID: 1
+Logs:
+(10/27/2026 09:20:51PM) Core:0 "Hello world from demo1!"
+(10/27/2026 09:20:51PM) Core:0 "Hello world from demo1!"
+(10/27/2026 09:20:51PM) Core:0 "Value from: 2561"
+...
+(10/27/2026 09:20:52PM) Core:0 "Value from: 49304"
+
+Current instruction line: 64
+Lines of code: 1037
+
+root:\>
+```
+
+Once a process finishes, the progress block is replaced by `Finished!`.
+
+Creating a duplicate name is rejected before attaching:
+
+```text
+Enter a command: screen -s demo1
+Process demo1 already exists.
+```
+
+Malformed invocations print usage:
+
+```text
+Enter a command: screen -s
+Usage: screen -s <process name>
+```
+
+### `screen -r <name>`
+
+```text
+Enter a command: screen -r demo1
+Process screen: demo1
+Type 'process-smi' for process information, 'exit' to return to the main menu.
+
+root:\> process-smi
+Process name: demo1
+ID: 1
+Logs:
+(10/27/2026 09:20:51PM) Core:0 "Hello world from demo1!"
+...
+
+root:\> exit
+```
+
+Missing or finished processes:
+
+```text
+Enter a command: screen -r ghost
+Process ghost not found.
+```
+
+### `report-util`
+
+```text
+Enter a command: report-util
+Report saved to csopesy-log.txt.
+```
+
+`csopesy-log.txt` contains exactly what `screen -ls` prints at that moment:
+
+```text
+CPU utilization: 100.00%
+Cores used: 4
+Cores available: 0
+
+Running processes:
+p01 (11/04/2026 01:17:53 AM) Core: -- 9 / 1037
+...
+Finished processes:
+
+```
+
+### `clear` and `exit`
+
+`clear` wipes the terminal and reprints the CSOPESY header. `exit` stops the
+generation and CPU threads and terminates the process:
+
+```text
+Enter a command: exit
+$ echo $?
+0
+```
+
+### Unrecognized input
+
+```text
+Enter a command: foo
+Command not recognized. Please try again.
+
+Enter a command: screen
+screen command recognized. Doing something.
+
+Enter a command: screen -r ghost
+Process ghost not found.
+```
+
+## End-to-end walkthrough
+
+Run from the repository root so `config.txt` is found:
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/os-emulator
+```
+
+Then enter the commands in this order (verified end to end from a clean
+configure; the process exits with status 0):
+
+```text
+initialize
+scheduler-start
+screen -ls
+screen -s demo1
+process-smi
+exit            <- detach back to the main menu
+screen -r demo1
+process-smi
+exit            <- detach again
+report-util
+exit            <- shuts the emulator down
+```
+
+Transcript of a real run (trimmed — `screen -ls` prints one row per generated
+process; this run had 1133 after two seconds):
+
+```text
+Enter a command: initialize
+Initialization successful.
+
+Enter a command: scheduler-start
+Process generation started.
+
+Enter a command: screen -ls
+CPU utilization: 100.00%
+Cores used: 4
+Cores available: 0
+
+Running processes:
+p01 (11/04/2026 01:17:53 AM) Core: -- 9 / 1037
+...
+p268 (11/04/2026 01:17:54 AM) Core: 3 1 / 1431
+...
+p547 (11/04/2026 01:17:54 AM) Core: 0 0 / 1111
+p548 (11/04/2026 01:17:54 AM) Core: 1 0 / 1933
+p549 (11/04/2026 01:17:54 AM) Core: 2 0 / 1632
+...
+p1133 (11/04/2026 01:17:55 AM) Core: -- 0 / 1348
+
+Finished processes:
+
+Enter a command: screen -s demo1
+Process screen: demo1
+Type 'process-smi' for process information, 'exit' to return to the main menu.
+
+root:\> process-smi
+Process name: demo1
+ID: 1390
+Logs:
+
+Current instruction line: 0
+Lines of code: 1048
+
+root:\> exit
+
+   ___    ___     ___     ___    ___    ___   __   __
+  / __|  / __|   / _ \   | _ \  | __|  / __|  \ \ / /
+ | (__   \__ \  | (_) |  |  _/  | _|   \__ \   \ V /
+  \___|  |___/   \___/   |_|    |___|  |___/    |_|
+
+Hello, Welcome to CSOPESY commandline!
+Type 'exit' to quit, 'clear' to clear the screen
+
+** IMPORTANT: Type 'initialize' to load config and start system **
+
+Enter a command: screen -r demo1
+Process screen: demo1
+Type 'process-smi' for process information, 'exit' to return to the main menu.
+
+root:\> process-smi
+Process name: demo1
+ID: 1390
+Logs:
+
+Current instruction line: 0
+Lines of code: 1048
+
+root:\> exit
+
+   ___    ___     ___     ___    ___    ___   __   __
+  / __|  / __|   / _ \   | _ \  | __|  / __|  \ \ / /
+ | (__   \__ \  | (_) |  |  _/  | _|   \__ \   \ V /
+  \___|  |___/   \___/   |_|    |___|  |___/    |_|
+
+Hello, Welcome to CSOPESY commandline!
+Type 'exit' to quit, 'clear' to clear the screen
+
+** IMPORTANT: Type 'initialize' to load config and start system **
+
+Enter a command: report-util
+Report saved to csopesy-log.txt.
+
+Enter a command: exit
+```
+
+```bash
+$ echo $?
+0
+```
+
+Two behaviors to note:
+
+- `exit` inside a process screen **detaches**; only `exit` at the main menu
+  shuts the emulator down (per spec §3.1).
+- `demo1` stays at instruction line 0 with empty logs because with the sample
+  config (`batch-process-freq 1`, `delay-per-exec 0`) the generator creates
+  processes faster than 4 cores can drain them, and `screen -s` queues at the
+  back. See Known limitations.
+
+## Scheduling behavior
 
 Both reports use one formatter over a copied scheduler snapshot. Utilization is
 assigned cores / configured cores; available cores are configured cores minus
@@ -62,20 +418,23 @@ adding work; subsequent reports show the remaining work progressing to completio
 
 `initialize` reads `config.txt` from the current working directory. The file is
 space-separated, one key per line; values may be quoted (`scheduler "rr"`).
+Every field below maps 1:1 to `include/Config.h`.
 
-| Key | Range | Meaning |
-| --- | --- | --- |
-| `num-cpu` | `[1, 128]` | Number of CPU worker threads |
-| `scheduler` | `fcfs` or `rr` | Scheduling algorithm |
-| `quantum-cycles` | `[1, 4294967295]` | Time slice for round-robin |
-| `batch-process-freq` | `[1, 4294967295]` | Cycles between generated processes |
-| `min-ins` | `[1, 4294967295]` | Minimum instructions per process |
-| `max-ins` | `[1, 4294967295]` | Maximum instructions per process |
-| `delay-per-exec` | `[0, 4294967295]` | Cycles to wait between instructions |
+| Key | `Config.h` field | Type | Range / values |
+| --- | --- | --- | --- |
+| `num-cpu` | `numCpu` | `int` | `[1, 128]` |
+| `scheduler` | `scheduler` | `SchedulerType` | `fcfs` or `rr` |
+| `quantum-cycles` | `quantumCycles` | `uint32_t` | `[1, 4294967295]` |
+| `batch-process-freq` | `batchProcessFreq` | `uint32_t` | `[1, 4294967295]` |
+| `min-ins` | `minIns` | `uint32_t` | `[1, 4294967295]` |
+| `max-ins` | `maxIns` | `uint32_t` | `[1, 4294967295]` |
+| `delay-per-exec` | `delayPerExec` | `uint32_t` | `[0, 4294967295]` |
 
 - `min-ins` must not exceed `max-ins`.
-- Both `delay-per-exec` (mockup) and `delays-per-exec` (written spec) are accepted.
+- The spec's `delays-per-exec` spelling is accepted as an alias for the
+  mockup's `delay-per-exec`.
 - Unknown keys are ignored; blank lines and `#` comments are skipped.
+- Missing keys fail with `Missing required config key: '<key>'.`
 - `config.txt` is read relative to where the executable runs, not where it lives.
 
 Invalid input keeps the system uninitialized and reports the offending key:
@@ -86,31 +445,77 @@ Config key 'num-cpu' must be in [1, 128], got '0'.
 
 ## Project structure
 
+Every file tracked in git (`build/`, `csopesy-log.txt`, and `Testing/` are
+generated and gitignored):
+
 ```text
+.gitignore                  # ignores build/, logs, binaries, IDE files
+CMakeLists.txt              # emulator_core lib, os-emulator CLI, 5 ctest checks, warnings
+LICENSE                     # MIT
+README.md                   # this file
+config.txt                  # sample configuration (read from the working directory)
+checks/
+  ProcessScreenCheck.cpp    # end-to-end REPL check: screen -s / process-smi / detach
+  ProcessSmiCheck.cpp       # process-smi formatting incl. Finished! output
+  SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, drain
+  SchedulerQuantumCheck.cpp # RR quantum preemption, sleep/wake budgets
+  SchedulerReportCheck.cpp  # report-util + screen -ls formatting across load levels
 include/
-  AsciiArt.h       # convert_to_ascii() declaration, ASCII_ROWS constant
-  CommandHandler.h # REPL loop declaration, borrows Emulator by reference
-  Config.h         # validated configuration value
-  ConsoleColors.h  # ANSI color constants (header-only, no build change)
-  Emulator.h       # liveness state + loaded configuration
-  Instruction.h    # random program instructions (Op, Instruction, Program)
-  EmulatorProcess.h # process entity + single-step execution (avoids Windows process.h)
-  ProcessReport.h  # shared snapshot report formatter
-  Scheduler.h      # CPU clock thread + cycle counter
-src/
-  main.cpp            # owns Emulator, runs CommandHandler
-  CommandHandler.cpp  # command parsing, gating, and dispatch
-  Config.cpp          # config.txt parsing and validation
-  Instruction.cpp     # seeded instruction generator + static size
-  Process.cpp         # flattening, step dispatch, FOR frame stack
-  ProcessReport.cpp   # CPU utilization and process table formatting
-  Scheduler.cpp       # start/stop lifecycle, throttled tick loop
-  AsciiArt.cpp        # 5-row blocky font (A-Z, 0-9, space, ! ? .)
-config.txt            # sample configuration
-CMakeLists.txt
+  AsciiArt.h                # convert_to_ascii() declaration, ASCII_ROWS constant
+  CommandHandler.h          # REPL loop declaration, borrows Emulator by reference
+  Config.h                  # SchedulerType + validated configuration struct
+  ConsoleColors.h           # ANSI color constants (header-only)
+  Emulator.h                # liveness state + loaded configuration + shutdown
+  EmulatorProcess.h         # process entity + step states (avoids Windows process.h)
+  Instruction.h             # Op, Instruction, Program, generator declaration
+  ProcessReport.h           # shared snapshot report formatter
+  ProcessSmi.h              # process-smi formatter declaration
+  Scheduler.h               # ProcessView + FCFS/RR scheduler (clock, dispatch, workers)
 specs/
   csopesy_emulator_specifications.md  # machine project spec
+src/
+  AsciiArt.cpp              # 5-row blocky font (A-Z, 0-9, space, ! ? .)
+  CommandHandler.cpp        # command parsing, gating, dispatch, process screen
+  Config.cpp                # config.txt parsing and validation
+  Instruction.cpp           # seeded random program generator + program printing
+  Process.cpp               # flattening, step dispatch, FOR frame stack, uint16 clamp
+  ProcessReport.cpp         # CPU utilization and process table formatting
+  ProcessSmi.cpp            # process-smi logs/progress formatting
+  Scheduler.cpp             # tick clock, dispatch, workers, generation, sleepers
+  main.cpp                  # owns Emulator, runs CommandHandler
 ```
+
+## Known limitations
+
+- **Sample config overloads the CPU.** `batch-process-freq 1` with
+  `delay-per-exec 0` asks for ~1000 processes/second while 4 cores drain
+  ~4 instructions/tick, so the ready queue grows without bound. A process
+  created by `screen -s` after `scheduler-start` queues behind that backlog and
+  reports `Current instruction line: 0` with empty logs for a long time. Use a
+  larger `batch-process-freq`, a smaller `min-ins`/`max-ins`, or skip
+  `scheduler-start` to see live logs immediately.
+- **No history reclamation.** Finished processes release their variables, but
+  the process record (program and logs) stays in memory for the lifetime of the
+  run, and names are never reused, so long runs grow monotonically.
+- **`screen` without a valid subcommand** falls through to the placeholder
+  `screen command recognized. Doing something.` instead of a usage error. Only
+  `-ls`, `-s <name>`, and `-r <name>` are implemented.
+- **`report-util` overwrites** `csopesy-log.txt` on every call; it does not
+  append. The file is written to the current working directory.
+- **A CPU tick is wall-clock throttled** to ~1 ms (`kCycleInterval`), not a
+  literal busy-wait frame pass as in the spec's pseudocode. Delays and
+  generation frequency are therefore real-time, not instruction-count exact.
+- **Generation can lag the clock.** Each dispatch pass builds at most
+  `kMaxGeneratedPerPass` (4) processes so program generation never holds the
+  scheduler lock long enough to starve the REPL. When the host cannot build
+  processes as fast as `batch-process-freq` requests, the remaining batches carry
+  over and generation runs behind schedule instead of blocking commands.
+- **`config.txt` path is fixed** to `config.txt` in the working directory; there
+  is no command-line flag for an alternate file.
+- **EOF detaches and exits.** Piping input (Ctrl+D) inside a process screen
+  detaches to the main menu, then ends the main loop.
+- **No process control beyond the spec.** There is no command to terminate,
+  kill, or reorder a process, and no memory/hardware visualization.
 
 ## Dependencies
 
@@ -243,10 +648,14 @@ Windows (PowerShell):
 "initialize", "screen", "foo", "clear", "exit" | .\build\Debug\os-emulator.exe
 ```
 
+### Tests
+
 The build includes scheduler/report checks covering idle, partial, and full
 utilization, live snapshots, report commands, RR rotation, sleep/wake budgets,
-stop/resume, FCFS/RR output comparisons on identical seeded programs, and dummy
-generation cadence, naming, bounds, restarts, and draining after generation stops. Run them with:
+stop/resume, FCFS/RR output comparisons on identical seeded programs, dummy
+generation cadence, naming, bounds, restarts, draining after generation stops,
+`process-smi` formatting (including `Finished!`), and an end-to-end
+`screen -s` / `process-smi` / detach REPL pass. Run them with:
 
 ```bash
 ctest --test-dir build -C Debug --output-on-failure
