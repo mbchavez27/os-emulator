@@ -1,9 +1,9 @@
-#include "CommandHandler.h"
-#include "Emulator.h"
-#include "AsciiArt.h"
-#include "ConsoleColors.h"
-#include "ProcessReport.h"
-#include "ProcessSmi.h"
+#include "shell/CommandHandler.h"
+#include "system/Emulator.h"
+#include "shell/AsciiArt.h"
+#include "shell/ConsoleColors.h"
+#include "shell/ProcessReport.h"
+#include "shell/ProcessSmi.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>

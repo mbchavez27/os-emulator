@@ -1,5 +1,5 @@
-#include "Instruction.h"
-#include "Config.h"
+#include "kernel/Instruction.h"
+#include "config/Config.h"
 
 #include <algorithm>
 #include <random>

@@ -1,4 +1,4 @@
-#include "EmulatorProcess.h"
+#include "kernel/EmulatorProcess.h"
 
 #include <limits>
 #include <stdexcept>

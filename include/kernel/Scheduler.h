@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Config.h"
-#include "EmulatorProcess.h"
+#include "config/Config.h"
+#include "kernel/EmulatorProcess.h"
 
 #include <atomic>
 #include <chrono>

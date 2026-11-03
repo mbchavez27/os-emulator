@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Scheduler.h"
+#include "kernel/Scheduler.h"
 
 #include <cstddef>
 #include <string>

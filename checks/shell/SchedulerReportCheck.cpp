@@ -1,6 +1,6 @@
-#include "CommandHandler.h"
-#include "Emulator.h"
-#include "ProcessReport.h"
+#include "shell/CommandHandler.h"
+#include "system/Emulator.h"
+#include "shell/ProcessReport.h"
 
 #include <algorithm>
 #include <array>

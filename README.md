@@ -106,44 +106,66 @@ Config key 'num-cpu' must be in [1, 128], got '0'.
 
 ## Project structure
 
+The code is organized like an operating system: a **kernel** that schedules
+and runs processes, a **shell** the user types into, and the **system** that
+powers the machine on and off.
+
+| Folder | Holds |
+| --- | --- |
+| `kernel/` | The scheduler (CPU ticks, cores, FCFS/RR dispatch), processes, and the instruction set with its program generator. |
+| `config/` | Loading and validating `config.txt`. |
+| `system/` | `Emulator`: owns the configuration and the kernel; `initialize` powers it on, `exit` shuts it down. |
+| `shell/` | Everything the user sees: the main menu and process screens, `screen -ls` / `report-util` / `process-smi` output, and the header art. |
+
+The kernel never includes anything from `shell/` or `system/`; the shell sits on top.
+
 Every file tracked in git (`build/`, `csopesy-log.txt`, and `Testing/` are
 generated and gitignored):
 
 ```text
-.gitignore                  # ignores build/, logs, binaries, IDE files
-CMakeLists.txt              # emulator_core lib, os-emulator CLI, 5 ctest checks, warnings
-LICENSE                     # MIT
-README.md                   # this file
-config.txt                  # sample configuration (read from the working directory)
+.gitignore                      # ignores build/, logs, binaries, IDE files
+CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 5 ctest checks, warnings
+LICENSE                         # MIT
+README.md                       # this file
+config.txt                      # sample configuration (read from the working directory)
 checks/
-  ProcessScreenCheck.cpp    # end-to-end REPL check: screen -s / process-smi / detach
-  ProcessSmiCheck.cpp       # process-smi formatting incl. Finished! output
-  SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, drain
-  SchedulerQuantumCheck.cpp # RR quantum preemption, sleep/wake budgets
-  SchedulerReportCheck.cpp  # report-util + screen -ls formatting across load levels
+  kernel/
+    SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, drain
+    SchedulerQuantumCheck.cpp     # RR quantum preemption, sleep/wake budgets, delay spacing
+  shell/
+    ProcessScreenCheck.cpp      # end-to-end REPL check: screen -s / process-smi / detach
+    ProcessSmiCheck.cpp         # process-smi formatting incl. Finished! output
+    SchedulerReportCheck.cpp    # report-util + screen -ls formatting across load levels
 include/
-  AsciiArt.h                # convertToAscii() declaration, ASCII_ROWS constant
-  CommandHandler.h          # REPL loop declaration, borrows Emulator by reference
-  Config.h                  # SchedulerType + validated configuration struct
-  ConsoleColors.h           # ANSI color constants (header-only)
-  Emulator.h                # liveness state + loaded configuration + shutdown
-  EmulatorProcess.h         # process entity + step states (avoids Windows process.h)
-  Instruction.h             # Op, Instruction, Program, generator declaration
-  ProcessReport.h           # shared snapshot report formatter
-  ProcessSmi.h              # process-smi formatter declaration
-  Scheduler.h               # ProcessView + FCFS/RR scheduler (clock, dispatch, workers)
+  kernel/
+    EmulatorProcess.h           # process entity + step states (avoids Windows process.h)
+    Instruction.h               # Op, Operand, Instruction, Program, generator declaration
+    Scheduler.h                 # ProcessView + FCFS/RR scheduler (clock, dispatch, workers)
+  config/
+    Config.h                    # SchedulerType + validated configuration struct
+  system/
+    Emulator.h                  # liveness, loaded configuration, scheduler start/shutdown
+  shell/
+    AsciiArt.h                  # convertToAscii() declaration, ASCII_ROWS constant
+    CommandHandler.h            # REPL loop declaration, borrows Emulator by reference
+    ConsoleColors.h             # ANSI color constants (header-only)
+    ProcessReport.h             # shared screen -ls / report-util formatter
+    ProcessSmi.h                # process-smi formatter declaration
 specs/
   csopesy_emulator_specifications.md  # machine project spec
 src/
-  AsciiArt.cpp              # 5-row blocky font (A-Z, 0-9, space, ! ? .)
-  CommandHandler.cpp        # command parsing, gating, dispatch, process screen
-  Config.cpp                # config.txt parsing and validation
-  Instruction.cpp           # seeded random program generator + program printing
-  Process.cpp               # flattening, step dispatch, FOR frame stack, uint16 clamp
-  ProcessReport.cpp         # CPU utilization and process table formatting
-  ProcessSmi.cpp            # process-smi logs/progress formatting
-  Scheduler.cpp             # tick clock, dispatch, workers, generation, sleepers
-  main.cpp                  # owns Emulator, runs CommandHandler
+  kernel/
+    Instruction.cpp             # seeded random program generator + program printing
+    Process.cpp                 # flattening, per-instruction execution, FOR frames, uint16 clamp
+    Scheduler.cpp               # tick clock, dispatch, workers, generation, sleepers
+  config/
+    Config.cpp                  # config.txt parsing and validation
+  shell/
+    AsciiArt.cpp                # 5-row blocky font (A-Z, 0-9, space, ! ? .)
+    CommandHandler.cpp          # command parsing, gating, dispatch, process screen
+    ProcessReport.cpp           # CPU utilization and process table formatting
+    ProcessSmi.cpp              # process-smi logs/progress formatting
+  main.cpp                      # entry point: owns Emulator, runs CommandHandler
 ```
 
 ## Dependencies

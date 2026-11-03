@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Instruction.h"
+#include "kernel/Instruction.h"
 
 #include <chrono>
 #include <cstddef>

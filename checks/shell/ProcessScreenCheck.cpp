@@ -1,5 +1,5 @@
-#include "CommandHandler.h"
-#include "Emulator.h"
+#include "shell/CommandHandler.h"
+#include "system/Emulator.h"
 
 #include <algorithm>
 #include <chrono>

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Config.h"
-#include "Scheduler.h"
+#include "config/Config.h"
+#include "kernel/Scheduler.h"
 
 #include <optional>
 #include <stdexcept>

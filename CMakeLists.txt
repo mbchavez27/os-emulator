@@ -7,48 +7,48 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Domain logic with no UI dependency; shared by the CLI.
+# Kernel, config, and the pure report formatters; no console I/O. Shared by the CLI and checks.
 add_library(emulator_core STATIC
-  src/Config.cpp
-  src/Instruction.cpp
-  src/Process.cpp
-  src/ProcessReport.cpp
-  src/ProcessSmi.cpp
-  src/Scheduler.cpp
+  src/config/Config.cpp
+  src/kernel/Instruction.cpp
+  src/kernel/Process.cpp
+  src/shell/ProcessReport.cpp
+  src/shell/ProcessSmi.cpp
+  src/kernel/Scheduler.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(emulator_core PUBLIC Threads::Threads)
 
 add_executable(os-emulator
   src/main.cpp
-  src/CommandHandler.cpp
-  src/AsciiArt.cpp
+  src/shell/CommandHandler.cpp
+  src/shell/AsciiArt.cpp
 )
 target_link_libraries(os-emulator PRIVATE emulator_core)
 
 include(CTest)
 if(BUILD_TESTING)
   add_executable(scheduler-report-check
-    checks/SchedulerReportCheck.cpp
-    src/CommandHandler.cpp
-    src/AsciiArt.cpp
+    checks/shell/SchedulerReportCheck.cpp
+    src/shell/CommandHandler.cpp
+    src/shell/AsciiArt.cpp
   )
   target_link_libraries(scheduler-report-check PRIVATE emulator_core)
-  add_executable(process-smi-check checks/ProcessSmiCheck.cpp)
+  add_executable(process-smi-check checks/shell/ProcessSmiCheck.cpp)
   target_link_libraries(process-smi-check PRIVATE emulator_core)
   add_test(NAME process-smi COMMAND process-smi-check)
   set_tests_properties(process-smi PROPERTIES TIMEOUT 45)
   add_executable(process-screen-check
-    checks/ProcessScreenCheck.cpp
-    src/CommandHandler.cpp
-    src/AsciiArt.cpp
+    checks/shell/ProcessScreenCheck.cpp
+    src/shell/CommandHandler.cpp
+    src/shell/AsciiArt.cpp
   )
   target_link_libraries(process-screen-check PRIVATE emulator_core)
-  add_executable(scheduler-quantum-check checks/SchedulerQuantumCheck.cpp)
+  add_executable(scheduler-quantum-check checks/kernel/SchedulerQuantumCheck.cpp)
   target_link_libraries(scheduler-quantum-check PRIVATE emulator_core)
   add_test(NAME scheduler-quantum COMMAND scheduler-quantum-check)
   set_tests_properties(scheduler-quantum PROPERTIES TIMEOUT 45)
-  add_executable(scheduler-generation-check checks/SchedulerGenerationCheck.cpp)
+  add_executable(scheduler-generation-check checks/kernel/SchedulerGenerationCheck.cpp)
   target_link_libraries(scheduler-generation-check PRIVATE emulator_core)
   add_test(NAME scheduler-generation COMMAND scheduler-generation-check)
   set_tests_properties(scheduler-generation PROPERTIES TIMEOUT 45)
