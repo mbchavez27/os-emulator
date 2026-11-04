@@ -68,6 +68,24 @@ void checkNamesAndBounds(const Config &config, const std::vector<ProcessView> &v
     }
 }
 
+void checkOpening()
+{
+    Config config;
+    for (const std::uint64_t size : {1, 2, 100})
+    {
+        config.minIns = config.maxIns = size;
+        const auto program = generateProgram(config, "opening", 1);
+        check(program.instructionCount() == size, "I/O opening exceeded instruction bounds");
+        const auto *greeting = std::get_if<PrintInstruction>(&program.instructions.front().payload);
+        check(greeting && greeting->text == "Hello world from opening!", "Generated program lacks its greeting");
+        if (size > 1)
+        {
+            const auto *sleep = std::get_if<SleepInstruction>(&program.instructions[1].payload);
+            check(sleep && sleep->ticks == 255, "Generated program lacks its 255-tick I/O opening");
+        }
+    }
+}
+
 void checkDemo()
 {
     Config config;
@@ -95,12 +113,87 @@ void checkDemo()
     check(scheduler.isRunning(), "Demo stopped CPU execution");
     std::cout << "Demo passed: " << count << " processes finished; 0% CPU, 8 cores available.\n";
 }
+
+void checkIdleDuringGeneration(std::uint64_t frequency, std::uint64_t delay)
+{
+    Config config;
+    config.numCpu = 1;
+    config.scheduler = SchedulerType::RR;
+    config.quantumCycles = 10;
+    config.batchProcessFreq = frequency;
+    config.minIns = 30;
+    config.maxIns = 45;
+    config.delayPerExec = delay;
+    Scheduler scheduler;
+    scheduler.startGeneration(config);
+    bool sawBusy = false;
+    std::uint64_t idleStart = 0;
+    waitFor(scheduler, [&](const auto &views) {
+        sawBusy = sawBusy || std::any_of(views.begin(), views.end(), [](const auto &view) {
+            return view.core && view.currentLine > 0;
+        });
+        const bool sleeping = std::any_of(views.begin(), views.end(), [](const auto &view) {
+            return view.state == ProcessState::WAITING && view.currentLine >= 2 && !view.logs.empty();
+        });
+        const bool runnable = std::any_of(views.begin(), views.end(), [](const auto &view) {
+            return view.state == ProcessState::READY || view.state == ProcessState::RUNNING;
+        });
+        if (!sawBusy || !sleeping || runnable)
+        {
+            idleStart = 0;
+            return false;
+        }
+        const auto cycle = scheduler.cycleCount();
+        if (idleStart == 0)
+        {
+            idleStart = cycle;
+        }
+        check(buildProcessReport({1, views}).find("CPU utilization: 0%\n") == 0,
+              "Case 7 genuine idle interval did not report 0%");
+        return cycle >= idleStart + 2;
+    });
+    check(scheduler.stopGeneration(), "Case 7 stopped generating before its idle interval");
+    std::cout << "Case 7 passed: batch=" << frequency << ", delay=" << delay
+              << "; observed busy execution followed by genuine idle.\n";
+}
+
+void checkSaturation()
+{
+    Config config;
+    config.numCpu = 16;
+    config.scheduler = SchedulerType::RR;
+    config.quantumCycles = 5;
+    config.batchProcessFreq = 1;
+    config.minIns = config.maxIns = 5000;
+    config.delayPerExec = 3;
+    Scheduler scheduler;
+    scheduler.startGeneration(config);
+    const auto started = std::chrono::steady_clock::now();
+    for (int sample = 0; sample < 5; ++sample)
+    {
+        std::this_thread::sleep_until(started + std::chrono::seconds(10 + 5 * sample));
+        const auto views = scheduler.snapshot();
+        check(buildProcessReport({16, views}).find(
+                  "CPU utilization: 100%\nCores used: 16\nCores available: 0\n") == 0,
+              "Case 8 did not keep all 16 cores occupied");
+        check(std::count_if(views.begin(), views.end(), [](const auto &view) {
+            return view.state == ProcessState::FINISHED;
+        }) < 10, "Case 8 finished too many processes");
+    }
+    scheduler.stopGeneration();
+    const auto latest = scheduler.snapshot();
+    check(buildProcessReport({16, latest}).find("CPU utilization: 100%\n") == 0,
+          "Case 8 generation stop interrupted CPU execution");
+    std::cout << "Case 8 passed: five 100% samples; " << latest.size()
+              << " processes retained after generation stopped.\n";
+}
 } // namespace
 
 int main()
 {
     try
     {
+        checkOpening();
         Config config = generationConfig();
         Scheduler cadence;
         check(!cadence.stopGeneration() && !cadence.isRunning(), "Stopping idle generation started CPU threads");
@@ -227,6 +320,9 @@ int main()
             check(refused, "An oversized program was not refused");
         }
         checkDemo();
+        checkIdleDuringGeneration(20, 3);
+        checkIdleDuringGeneration(10, 1);
+        checkSaturation();
         std::cout << "Scheduler generation checks passed.\n";
     }
     catch (const std::exception &error)

@@ -2,6 +2,7 @@
 #include "config/Config.h"
 
 #include <algorithm>
+#include <iterator>
 #include <random>
 #include <stdexcept>
 #include <type_traits>
@@ -293,6 +294,15 @@ Program generateProgram(const Config &config,
     }
 
     Program program;
-    program.instructions = generateSequence(state, size, 0, processName);
+    program.instructions.reserve(size);
+    program.instructions.push_back(Instruction{makePrint(processName)});
+    if (size > 1)
+    {
+        program.instructions.push_back(Instruction{SleepInstruction{255}});
+    }
+    auto remaining = generateSequence(state, size - program.instructions.size(), 0, processName);
+    program.instructions.insert(program.instructions.end(),
+                                std::make_move_iterator(remaining.begin()),
+                                std::make_move_iterator(remaining.end()));
     return program;
 }

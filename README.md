@@ -59,8 +59,12 @@ Time spent off-core counts toward the execution delay.
 after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,
 `p99`, `p100`, ...); IDs and names continue across stop/start cycles. Programs use
 the configured instruction bounds and their process ID as the generator seed.
-Generated SLEEP instructions wait one tick; the interpreter supports the full
-`uint8` sleep range. FOR bodies still repeat and count toward the program's line count.
+Generated programs begin with a greeting PRINT and a 255-tick SLEEP representing
+initial I/O, both counted within the configured line limit. A one-line program
+contains only the greeting. Remaining instructions are random, with one-tick sleeps;
+the interpreter supports the full `uint8` sleep range. FOR bodies still repeat and
+count toward the program's line count. When a process sleeps or finishes, queued
+work fills released cores before a report can observe their state.
 Starting twice keeps the original generation schedule. `scheduler-stop` stops
 creation synchronously and leaves the CPU running so existing work can finish.
 Restarting generation waits a fresh interval and keeps process history.
@@ -80,6 +84,18 @@ wait 30 seconds, then run `screen-ls`. The `scheduler-generation` check runs thi
 timing scenario and requires every generated process to finish with 0% utilization.
 Zero-delay execution intentionally differs from the written spec's one-instruction-
 per-cycle rule to meet this demonstration target.
+
+For case 7 (1 CPU, RR, quantum 10, batch frequency 20, 30–45 lines, delay 3),
+start polling `screen-ls` as soon as generation starts. During the initial I/O
+phase, processes execute their greeting and then sleep, allowing genuine 100%
+and 0% samples after work begins. Capture these early: later, the accumulated
+workload can keep the core busy. An idle report can still have unfinished sleeping
+processes, which are omitted from its running section.
+
+For case 8 (16 CPUs, RR, quantum 5, batch frequency 1, 5000 lines, delay 3),
+wait 10 seconds, then run `screen-ls` five times at 5-second intervals. Stop
+generation and run `report-util` to save a fresh snapshot to `csopesy-log.txt`.
+The generation check verifies cases 6–8 together and takes at least 70 seconds.
 
 ## Configuration (`config.txt`)
 

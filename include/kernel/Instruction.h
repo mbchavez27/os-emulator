@@ -170,6 +170,7 @@ constexpr std::uint64_t kMaxProgramInstructions = 1'000'000;
  *
  * Identical config, process name, and seed produce an identical program.
  * Every instruction counts toward [minIns, maxIns], including FOR bodies.
+ * Programs start with PRINT and, when at least two lines fit, a 255-tick SLEEP.
  *
  * @param config supplies minIns and maxIns
  * @param processName used in the default PRINT message
