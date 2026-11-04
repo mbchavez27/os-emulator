@@ -31,11 +31,36 @@ std::size_t count(const std::string &text, const std::string &needle)
 }
 
 /**
+ * @brief Removes ANSI color codes so checks compare layout, not color.
+ *
+ * @param text console output that may contain ESC [ ... m sequences
+ * @return the text with every color sequence removed
+ */
+std::string stripColors(const std::string &text)
+{
+    std::string plain;
+    for (std::size_t at = 0; at < text.size(); ++at)
+    {
+        if (text[at] == '\033' && at + 1 < text.size() && text[at + 1] == '[')
+        {
+            const std::size_t end = text.find('m', at);
+            if (end != std::string::npos)
+            {
+                at = end;
+                continue;
+            }
+        }
+        plain += text[at];
+    }
+    return plain;
+}
+
+/**
  * @brief Runs the console over scripted input.
  *
  * @param emulator the emulator to drive
  * @param input the commands to feed, one per line
- * @return everything the console printed
+ * @return everything the console printed, with colors stripped
  */
 std::string drive(Emulator &emulator, const std::string &input)
 {
@@ -46,7 +71,7 @@ std::string drive(Emulator &emulator, const std::string &input)
     CommandHandler(emulator).run();
     std::cin.rdbuf(previousInput);
     std::cout.rdbuf(previousOutput);
-    return output.str();
+    return stripColors(output.str());
 }
 
 std::vector<ProcessView> named(Emulator &emulator, const std::string &name)

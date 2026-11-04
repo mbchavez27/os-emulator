@@ -13,13 +13,36 @@
 #include <vector>
 #include <cstdlib>
 
+namespace
+{
+
+/**
+ * @brief Prints a console response in its role color, then the blank line
+ * that separates responses.
+ *
+ * @param color the console_colors role for the message
+ * @param message the response text, without trailing newlines
+ */
+void respond(const char *color, const std::string &message)
+{
+    std::cout << color << message << console_colors::RESET << "\n\n";
+}
+
+/** @brief Prints the root:\> prompt in the prompt color. */
+void printPrompt()
+{
+    std::cout << console_colors::PROMPT << "root:\\>" << console_colors::RESET << " " << std::flush;
+}
+
+} // namespace
+
 CommandHandler::CommandHandler(Emulator &e) : emulator(e) {}
 
 void CommandHandler::printHeader()
 {
     for (const auto &line : ascii_art::convertToAscii("CSOPESY"))
     {
-        std::cout << line << "\n";
+        std::cout << console_colors::TITLE << line << console_colors::RESET << "\n";
     }
 
     // Banner layout follows the spec's main-menu mockup.
@@ -41,12 +64,12 @@ void CommandHandler::clearScreen()
 #ifdef _WIN32
     if (std::system("cls") != 0)
     {
-        std::cout << "Failed to clear screen.\n";
+        std::cout << console_colors::FAILURE << "Failed to clear screen." << console_colors::RESET << "\n";
     }
 #else
     if (std::system("clear") != 0)
     {
-        std::cout << "Failed to clear screen.\n";
+        std::cout << console_colors::FAILURE << "Failed to clear screen." << console_colors::RESET << "\n";
     }
 #endif
 }
@@ -54,13 +77,13 @@ void CommandHandler::clearScreen()
 void CommandHandler::runProcessScreen(const std::string &name)
 {
     clearScreen();
-    std::cout << "Process screen: " << name << "\n"
+    std::cout << console_colors::TITLE << "Process screen: " << name << console_colors::RESET << "\n"
               << "Type 'process-smi' for process information, 'exit' to return to the main menu.\n\n";
 
     std::string line;
     while (emulator.isAlive())
     {
-        std::cout << "root:\\> " << std::flush;
+        printPrompt();
 
         if (!std::getline(std::cin, line))
         {
@@ -93,18 +116,18 @@ void CommandHandler::runProcessScreen(const std::string &name)
             });
             if (view == views.end())
             {
-                std::cout << "Process " << name << " not found.\n\n";
+                respond(console_colors::FAILURE, "Process " + name + " not found.");
             }
             else
             {
                 // The mockup leaves a blank line between the command and its output.
-                std::cout << "\n" << buildProcessSmi(*view) << "\n";
+                std::cout << "\n" << console_colors::INFO << buildProcessSmi(*view) << console_colors::RESET << "\n";
             }
         }
         else
         {
-            std::cout << "Unknown command '" << input
-                      << "'. Available commands: process-smi, exit\n\n";
+            respond(console_colors::FAILURE,
+                    "Unknown command '" + input + "'. Available commands: process-smi, exit");
         }
     }
 
@@ -120,7 +143,7 @@ void CommandHandler::run()
     std::string line;
     while (emulator.isAlive())
     {
-        std::cout << "root:\\> " << std::flush;
+        printPrompt();
         if (!std::getline(std::cin, line))
         {
             break;
@@ -149,7 +172,7 @@ void CommandHandler::dispatch(const std::string &command, std::istringstream &ar
     }
     else if (!emulator.isInitialized())
     {
-        std::cout << "System not yet initialized. Type 'initialize' to load config.\n\n";
+        respond(console_colors::FAILURE, "System not yet initialized. Type 'initialize' to load config.");
     }
     else if (command == "screen")
     {
@@ -169,7 +192,7 @@ void CommandHandler::dispatch(const std::string &command, std::istringstream &ar
     }
     else
     {
-        std::cout << "Command not recognized. Please try again.\n\n";
+        respond(console_colors::FAILURE, "Command not recognized. Please try again.");
     }
 }
 
@@ -177,7 +200,7 @@ void CommandHandler::reportGenerationFailure()
 {
     if (emulator.scheduler().takeGenerationFailure())
     {
-        std::cout << "Process generation stopped: unable to create a process.\n\n";
+        respond(console_colors::FAILURE, "Process generation stopped: unable to create a process.");
     }
 }
 
@@ -185,17 +208,17 @@ void CommandHandler::initializeSystem()
 {
     if (emulator.isInitialized())
     {
-        std::cout << "System is already initialized.\n\n";
+        respond(console_colors::FAILURE, "System is already initialized.");
         return;
     }
     std::string error;
     if (emulator.initialize("config.txt", error))
     {
-        std::cout << "Initialization successful.\n\n";
+        respond(console_colors::SUCCESS, "Initialization successful.");
     }
     else
     {
-        std::cout << error << "\n\n";
+        respond(console_colors::FAILURE, error);
     }
 }
 
@@ -205,7 +228,8 @@ void CommandHandler::handleScreen(std::istringstream &arguments)
     arguments >> subcommand;
     if (subcommand == "-ls" && hasNoMoreWords(arguments))
     {
-        std::cout << currentReport();
+        // Colored only on the console; report-util writes the same text plain.
+        std::cout << console_colors::INFO << currentReport() << console_colors::RESET;
     }
     else if (subcommand == "-s")
     {
@@ -218,10 +242,10 @@ void CommandHandler::handleScreen(std::istringstream &arguments)
     else
     {
         // Bare `screen`, unknown flags, and `screen -ls` with extra arguments.
-        std::cout << "Usage:\n"
-                     "  screen -s <process name>   Create a process and attach to it\n"
-                     "  screen -r <process name>   Reattach to a running process\n"
-                     "  screen -ls                 List running and finished processes\n\n";
+        respond(console_colors::FAILURE, "Usage:\n"
+                                         "  screen -s <process name>   Create a process and attach to it\n"
+                                         "  screen -r <process name>   Reattach to a running process\n"
+                                         "  screen -ls                 List running and finished processes");
     }
 }
 
@@ -230,7 +254,7 @@ void CommandHandler::createAndAttach(std::istringstream &arguments)
     std::string processName;
     if (!(arguments >> processName) || !hasNoMoreWords(arguments))
     {
-        std::cout << "Usage: screen -s <process name>\n\n";
+        respond(console_colors::FAILURE, "Usage: screen -s <process name>");
         return;
     }
 
@@ -240,13 +264,13 @@ void CommandHandler::createAndAttach(std::istringstream &arguments)
     {
         if (!emulator.scheduler().createProcess(processName, emulator.config()))
         {
-            std::cout << "Process " << processName << " already exists.\n\n";
+            respond(console_colors::FAILURE, "Process " + processName + " already exists.");
             return;
         }
     }
     catch (const std::exception &error)
     {
-        std::cout << "Failed to create process " << processName << ": " << error.what() << "\n\n";
+        respond(console_colors::FAILURE, "Failed to create process " + processName + ": " + error.what());
         return;
     }
     runProcessScreen(processName);
@@ -257,12 +281,12 @@ void CommandHandler::reattach(std::istringstream &arguments)
     std::string processName;
     if (!(arguments >> processName) || !hasNoMoreWords(arguments))
     {
-        std::cout << "Usage: screen -r <process name>\n\n";
+        respond(console_colors::FAILURE, "Usage: screen -r <process name>");
         return;
     }
     if (!emulator.scheduler().findActiveProcessByName(processName))
     {
-        std::cout << "Process " << processName << " not found.\n\n";
+        respond(console_colors::FAILURE, "Process " + processName + " not found.");
         return;
     }
     runProcessScreen(processName);
@@ -272,11 +296,11 @@ void CommandHandler::startGeneration()
 {
     if (emulator.scheduler().startGeneration(emulator.config()))
     {
-        std::cout << "Process generation started.\n\n";
+        respond(console_colors::SUCCESS, "Process generation started.");
     }
     else
     {
-        std::cout << "Process generation is already running.\n\n";
+        respond(console_colors::FAILURE, "Process generation is already running.");
     }
 }
 
@@ -284,11 +308,11 @@ void CommandHandler::stopGeneration()
 {
     if (emulator.scheduler().stopGeneration())
     {
-        std::cout << "Process generation stopped. Existing processes will continue running.\n\n";
+        respond(console_colors::SUCCESS, "Process generation stopped. Existing processes will continue running.");
     }
     else
     {
-        std::cout << "Process generation is not running.\n\n";
+        respond(console_colors::FAILURE, "Process generation is not running.");
     }
 }
 
@@ -299,14 +323,14 @@ void CommandHandler::saveReport()
     file.close();
     if (!file)
     {
-        std::cout << "Failed to write csopesy-log.txt.\n\n";
+        respond(console_colors::FAILURE, "Failed to write csopesy-log.txt.");
         return;
     }
     // Full path, forward slashes, as in the mockup ("C:/csopesy-log.txt").
     std::error_code pathError;
     const auto path = std::filesystem::absolute("csopesy-log.txt", pathError);
-    std::cout << "Report generated at "
-              << (pathError ? std::string("csopesy-log.txt") : path.generic_string()) << "!\n\n";
+    respond(console_colors::SUCCESS,
+            "Report generated at " + (pathError ? std::string("csopesy-log.txt") : path.generic_string()) + "!");
 }
 
 std::string CommandHandler::currentReport() const
