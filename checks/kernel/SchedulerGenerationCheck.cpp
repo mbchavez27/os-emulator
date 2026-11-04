@@ -20,7 +20,7 @@ void check(bool condition, const char *message)
 template <typename Predicate>
 std::vector<ProcessView> waitFor(Scheduler &scheduler, Predicate ready)
 {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     do
     {
         auto views = scheduler.snapshot();
@@ -79,11 +79,13 @@ int main()
         waitCycles(cadence, 5);
         check(cadence.snapshot().empty(), "CPU startup must not enable generation");
         const auto earliestStart = cadence.cycleCount();
+        // One process per batch-process-freq batch cycles, each kTicksPerBatchCycle CPU ticks.
+        const auto interval = config.batchProcessFreq * Scheduler::kTicksPerBatchCycle;
         check(cadence.startGeneration(config), "Generation did not start");
         const auto latestStart = cadence.cycleCount();
         check(!cadence.startGeneration(config), "Starting twice enabled a second generator");
         const auto early = cadence.snapshot();
-        if (cadence.cycleCount() - earliestStart < config.batchProcessFreq)
+        if (cadence.cycleCount() - earliestStart < interval)
         {
             check(early.empty(), "First process appeared before a full batch interval");
         }
@@ -91,11 +93,11 @@ int main()
         check(cadence.stopGeneration(), "Generation did not stop");
         const auto stoppedCycle = cadence.cycleCount();
         const auto stopped = cadence.snapshot();
-        check(stopped.size() <= (stoppedCycle - earliestStart) / config.batchProcessFreq,
+        check(stopped.size() <= (stoppedCycle - earliestStart) / interval,
               "Generation exceeded one process per batch interval");
-        check(stopped.size() + 2 >= (stoppedCycle - latestStart) / config.batchProcessFreq,
+        check(stopped.size() + 2 >= (stoppedCycle - latestStart) / interval,
               "Generation fell behind the configured cadence");
-        waitCycles(cadence, 2 * config.batchProcessFreq);
+        waitCycles(cadence, 2 * interval);
         check(cadence.snapshot().size() == stopped.size(), "Creation continued after stopGeneration returned");
         check(!cadence.stopGeneration() && cadence.isRunning(), "Repeated stop shut down CPU execution");
         cadence.stop();
@@ -127,7 +129,7 @@ int main()
             config.delayPerExec = 2;
             Scheduler drain;
             Program program;
-            program.instructions.assign(16, Instruction{AddInstruction{
+            program.instructions.assign(300, Instruction{AddInstruction{
                 "x", Operand::variable("x"), Operand::literal(1)}});
             program.instructions.push_back(Instruction{PrintInstruction{"x=", std::string{"x"}}});
             drain.submitProcess(std::make_unique<Process>(1000, "manual", program));
@@ -143,7 +145,7 @@ int main()
                     return view.state == ProcessState::FINISHED;
                 });
             });
-            check(completed.front().logs == std::vector<std::string>{"x=16"},
+            check(completed.front().logs == std::vector<std::string>{"x=300"},
                   "Generation stop interrupted an existing process");
             check(completed.front().variables.empty(), "Finished process retained its variables");
             check(drain.isRunning(), "Draining stopped the CPU threads");

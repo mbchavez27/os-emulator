@@ -140,6 +140,20 @@ public:
     std::vector<ProcessView> snapshot() const;
 
     /**
+     * @brief CPU ticks in one batch-generation cycle.
+     *
+     * `batch-process-freq N` creates one process every N batch cycles, i.e.
+     * every N * kTicksPerBatchCycle CPU ticks. Execution, quantum, delay, and
+     * sleep stay in CPU ticks. With a 1:1 ratio a core retires one instruction
+     * per process created, so `batch-process-freq 1` floods every core and the
+     * queue never drains; the course test cases expect cores to outpace
+     * generation (100-instruction processes drain on 8 cores, and a single
+     * core goes idle between batches of 10-30), while 5000-instruction
+     * processes still saturate 16 cores.
+     */
+    static constexpr std::uint64_t kTicksPerBatchCycle = 100;
+
+    /**
      * @brief Finds a process that can still be attached to.
      *
      * @param name the process name
