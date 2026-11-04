@@ -386,11 +386,12 @@ void Scheduler::workerLoop(std::size_t core)
             }
             outcome = process->step(core);
             const auto executedCycle = cycles_.load(std::memory_order_relaxed);
-            nextCoreExecutionCycles_[core] = executedCycle + 1;
+            nextCoreExecutionCycles_[core] = executedCycle + (delayPerExec_ == 0 ? 0 : 1);
             if (outcome == StepOutcome::EXECUTED)
             {
-                // Wait delayPerExec_ whole cycles before the next instruction; 0 runs one per cycle.
-                nextProcessExecutionCycles_[index] = executedCycle + 1 + delayPerExec_;
+                // Zero delay runs continuously; positive delays wait whole cycles.
+                nextProcessExecutionCycles_[index] = executedCycle +
+                    (delayPerExec_ == 0 ? 0 : 1 + delayPerExec_);
             }
             if (outcome == StepOutcome::SLEEPING)
             {

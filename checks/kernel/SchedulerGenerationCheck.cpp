@@ -1,4 +1,5 @@
 #include "kernel/Scheduler.h"
+#include "shell/ProcessReport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -65,6 +66,34 @@ void checkNamesAndBounds(const Config &config, const std::vector<ProcessView> &v
         check(view.linesOfCode == generateProgram(config, view.name, view.id).instructionCount(),
               "Generated program did not use the instruction generator");
     }
+}
+
+void checkDemo()
+{
+    Config config;
+    config.numCpu = 8;
+    config.scheduler = SchedulerType::RR;
+    config.quantumCycles = 1;
+    config.batchProcessFreq = 1;
+    config.minIns = config.maxIns = 100;
+    config.delayPerExec = 0;
+    Scheduler scheduler;
+    scheduler.startGeneration(config);
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    check(scheduler.stopGeneration(), "Demo generation was not enabled");
+    const auto count = scheduler.snapshot().size();
+    check(count > 0, "Demo generated no processes");
+    std::this_thread::sleep_for(std::chrono::seconds(30));
+    const auto completed = scheduler.snapshot();
+    check(completed.size() == count, "Demo generated processes after scheduler-stop");
+    check(std::all_of(completed.begin(), completed.end(), [](const auto &view) {
+        return view.state == ProcessState::FINISHED && !view.core && view.linesOfCode == 100;
+    }), "Demo workload did not finish within 30 seconds of scheduler-stop");
+    const auto report = buildProcessReport({scheduler.coreCount(), completed});
+    check(report.find("CPU utilization: 0%\nCores used: 0\nCores available: 8\n") == 0,
+          "Demo report did not show idle CPUs");
+    check(scheduler.isRunning(), "Demo stopped CPU execution");
+    std::cout << "Demo passed: " << count << " processes finished; 0% CPU, 8 cores available.\n";
 }
 } // namespace
 
@@ -197,6 +226,7 @@ int main()
             }
             check(refused, "An oversized program was not refused");
         }
+        checkDemo();
         std::cout << "Scheduler generation checks passed.\n";
     }
     catch (const std::exception &error)
