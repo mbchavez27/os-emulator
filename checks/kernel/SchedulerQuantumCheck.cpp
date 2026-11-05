@@ -151,19 +151,41 @@ void compare(const std::vector<ProcessView> &expected, const std::vector<Process
     }
 }
 
-void shortenSleeps(std::vector<Instruction> &instructions)
+void checkZeroDelay(SchedulerType type)
 {
-    // Keep seeded workloads quick on Windows, where a CPU tick can take ~15 ms.
-    for (auto &instruction : instructions)
+    Config config;
+    config.numCpu = 1;
+    config.scheduler = type;
+    config.quantumCycles = 1;
+    Scheduler scheduler;
+    scheduler.submitProcess(std::make_unique<Process>(1, "fast", increments(256)));
+    scheduler.start(config);
+    const auto completed = finish(scheduler);
+    check(completed.front().logs == std::vector<std::string>{"x=256"},
+          "Zero-delay execution lost instructions");
+    check(scheduler.cycleCount() < 256,
+          "Zero-delay execution still waits one tick per instruction");
+}
+
+void checkZeroDelayPreemption()
+{
+    Config config;
+    config.numCpu = 1;
+    config.scheduler = SchedulerType::RR;
+    config.quantumCycles = 1;
+    ForInstruction inner{1024, {increments(1).instructions.front()}};
+    ForInstruction outer{1024, {Instruction{inner}}};
+    Program program{{Instruction{outer},
+                     Instruction{PrintInstruction{"x=", std::string{"x"}}}}};
+    bool rotated = false;
+    const auto completed = run(config, {program, program}, [&](const auto &views) {
+        rotated = rotated || (views[1].currentLine > 0 && views[0].state != ProcessState::FINISHED);
+    });
+    check(rotated, "Zero-delay RR did not preempt the first process");
+    for (const auto &view : completed)
     {
-        if (auto *sleep = std::get_if<SleepInstruction>(&instruction.payload))
-        {
-            sleep->ticks = 1;
-        }
-        if (auto *loop = std::get_if<ForInstruction>(&instruction.payload))
-        {
-            shortenSleeps(loop->body);
-        }
+        check(view.logs == std::vector<std::string>{"x=65535"},
+              "Zero-delay preemption lost loop state or output");
     }
 }
 } // namespace
@@ -183,6 +205,17 @@ int main()
         cleanup.tickSleep();
         check(cleanup.isFinished() && cleanup.variables().empty(),
               "Finishing after SLEEP did not release variables");
+
+        Process longSleep(1, "long-sleep", Program{{Instruction{SleepInstruction{255}}}});
+        longSleep.step();
+        for (int tick = 0; tick < 254; ++tick)
+        {
+            longSleep.tickSleep();
+            check(longSleep.isSleeping(), "Long SLEEP woke early");
+        }
+        longSleep.tickSleep();
+        check(longSleep.isFinished(), "Interpreter no longer supports 255-tick SLEEP");
+        checkZeroDelayPreemption();
 
         for (const int cores : {1, 4})
         {
@@ -207,12 +240,14 @@ int main()
         yielding.instructions = {Instruction{SleepInstruction{2}}, print.instructions.front()};
         for (const auto type : {SchedulerType::FCFS, SchedulerType::RR})
         {
+            checkZeroDelay(type);
             for (const int cores : {1, 4})
             {
                 Config pacing;
                 pacing.numCpu = cores;
                 pacing.scheduler = type;
                 pacing.quantumCycles = 1;
+                pacing.delayPerExec = 1;
                 checkTickPacing(pacing, {longPrint});
                 checkTickPacing(pacing, std::vector<Program>(32, print));
                 checkTickPacing(pacing, std::vector<Program>(32, yielding));
@@ -223,6 +258,7 @@ int main()
         config.numCpu = 1;
         config.scheduler = SchedulerType::RR;
         config.quantumCycles = 1;
+        config.delayPerExec = 1;
         bool rotated = false;
         const auto roundRobin = run(config, std::vector<Program>(3, increments(16)),
                                     [&](const auto &views) {
@@ -264,7 +300,8 @@ int main()
         for (std::uint32_t seed = 1; seed <= 3; ++seed)
         {
             auto program = generateProgram(config, "seeded", seed);
-            shortenSleeps(program.instructions);
+            // Keep output-equivalence fixtures quick; long sleeps are checked separately.
+            std::get<SleepInstruction>(program.instructions[1].payload).ticks = 2;
             seeded.push_back(std::move(program));
         }
         config.scheduler = SchedulerType::FCFS;
@@ -294,8 +331,8 @@ int main()
 
         config.numCpu = 1;
         config.quantumCycles = 8;
-        // One instruction per tick, so a fresh 8-tick quantum covers 8 instructions.
-        config.delayPerExec = 0;
+        // Positive delay preserves tick pacing across sleep and preemption.
+        config.delayPerExec = 1;
         Program sleeper = increments(21);
         sleeper.instructions[4] = Instruction{SleepInstruction{2}};
         bool slept = false;
@@ -304,7 +341,7 @@ int main()
             slept = slept || views[0].state == ProcessState::WAITING;
             if (!checkedFreshBudget && views[1].currentLine > 8)
             {
-                check(views[0].currentLine >= 12,
+                check(views[0].currentLine >= 8,
                       "Waking process did not receive a fresh quantum");
                 checkedFreshBudget = true;
             }
@@ -351,8 +388,7 @@ int main()
         check(rejectedZero && !resumed.isRunning(), "Zero RR quantum must fail before starting threads");
 
         // Spec: delay-per-exec is the number of cycles waited before the next
-        // instruction; 0 means one instruction per cycle. So delay d spaces
-        // instructions d + 1 ticks apart, and delay 1 must differ from delay 0.
+        // instruction for positive delays, spacing instructions d + 1 ticks apart.
         for (const std::uint64_t delay : {std::uint64_t{1}, std::uint64_t{3}})
         {
             config.scheduler = SchedulerType::FCFS;
@@ -369,7 +405,13 @@ int main()
             }
             const auto startTick = spaced.cycleCount();
             const auto startLine = spaced.snapshot().front().currentLine;
-            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            const auto spacingDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (spaced.cycleCount() - startTick < 4 * (delay + 1))
+            {
+                check(std::chrono::steady_clock::now() < spacingDeadline,
+                      "Delay spacing test observed too few ticks");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
             const auto ticks = spaced.cycleCount() - startTick;
             const auto executed = spaced.snapshot().front().currentLine - startLine;
             spaced.stop();
