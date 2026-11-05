@@ -178,7 +178,14 @@ void CommandHandler::dispatch(const std::string &command, std::istringstream &ar
     {
         handleScreen(arguments);
     }
-    else if (command == "scheduler-start")
+    else if (command == "screen-ls")
+    {
+        std::string remaining;
+        std::getline(arguments, remaining);
+        std::istringstream listing("-ls " + remaining);
+        handleScreen(listing);
+    }
+    else if (command == "scheduler-start" || command == "scheduler-test")
     {
         startGeneration();
     }

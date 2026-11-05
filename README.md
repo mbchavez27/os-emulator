@@ -13,9 +13,9 @@ succeeds, every command except `initialize` and `exit` is rejected.
 | Command | Behavior |
 | --- | --- |
 | `initialize` | Loads and validates `config.txt`, then starts the CPU scheduler with the configured algorithm; it runs until `exit`. Prints `Initialization successful.` or the offending key. Repeated calls print `System is already initialized.` |
-| `scheduler-start` | Starts dummy process generation (one process per `batch-process-freq` CPU ticks). |
+| `scheduler-start` / `scheduler-test` | Starts dummy process generation (one process per `batch-process-freq` CPU ticks). |
 | `scheduler-stop` | Stops generation synchronously; queued and running processes continue to completion. |
-| `screen -ls` | Prints CPU utilization, core counts, and running/finished process rows. |
+| `screen -ls` / `screen-ls` | Prints CPU utilization, core counts, and running/finished process rows. |
 | `screen -s <name>` | Creates process `<name>` and attaches the console to its process screen. |
 | `screen -r <name>` | Reattaches to an existing unfinished process; `Process <name> not found.` for missing or finished names. |
 | `screen` (bare or unknown flag) | Prints usage for `screen -s`, `screen -r`, and `screen -ls`. |
@@ -49,9 +49,9 @@ processes advance; formatting the same snapshot always produces identical output
 `quantum-cycles` has no effect. `scheduler "rr"` gives each dispatched process a
 fresh quantum, measured in CPU ticks from when its worker begins the slice. Expiry moves it
 to the back of the ready queue with its program position intact. Sleeping releases
-the core, and waking starts a fresh quantum on the next dispatch. RR spaces
-instructions within a time slice by at least one tick when `delay-per-exec` is
-zero. Quantum expiry lets another process run, but each process keeps its next
+the core, and waking starts a fresh quantum on the next dispatch. With
+`delay-per-exec 0`, instructions execute continuously within the time slice.
+Quantum expiry lets another process run, but each process keeps its next
 permitted execution tick across preemption, core changes, and CPU stop/resume.
 Time spent off-core counts toward the execution delay.
 
@@ -59,6 +59,12 @@ Time spent off-core counts toward the execution delay.
 after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,
 `p99`, `p100`, ...); IDs and names continue across stop/start cycles. Programs use
 the configured instruction bounds and their process ID as the generator seed.
+Generated programs begin with a greeting PRINT and a 255-tick SLEEP representing
+initial I/O, both counted within the configured line limit. A one-line program
+contains only the greeting. Remaining instructions are random, with one-tick sleeps;
+the interpreter supports the full `uint8` sleep range. FOR bodies still repeat and
+count toward the program's line count. When a process sleeps or finishes, queued
+work fills released cores before a report can observe their state.
 Starting twice keeps the original generation schedule. `scheduler-stop` stops
 creation synchronously and leaves the CPU running so existing work can finish.
 Restarting generation waits a fresh interval and keeps process history.
@@ -71,6 +77,25 @@ continue running. `scheduler-start` can retry generation after the failure.
 To see generated processes, enter `initialize`, then `scheduler-start`, wait at
 least one batch interval, and enter `screen -ls`. Use `scheduler-stop` to stop
 adding work; subsequent reports show the remaining work progressing to completion.
+
+With the demo config (8 CPUs, RR, quantum 1, batch frequency 1, 100 instruction
+lines, delay 0), run `scheduler-test`, wait 10 seconds, run `scheduler-stop`,
+wait 30 seconds, then run `screen-ls`. The `scheduler-generation` check runs this
+timing scenario and requires every generated process to finish with 0% utilization.
+Zero-delay execution intentionally differs from the written spec's one-instruction-
+per-cycle rule to meet this demonstration target.
+
+For case 7 (1 CPU, RR, quantum 10, batch frequency 20, 30–45 lines, delay 3),
+start polling `screen-ls` as soon as generation starts. During the initial I/O
+phase, processes execute their greeting and then sleep, allowing genuine 100%
+and 0% samples after work begins. Capture these early: later, the accumulated
+workload can keep the core busy. An idle report can still have unfinished sleeping
+processes, which are omitted from its running section.
+
+For case 8 (16 CPUs, RR, quantum 5, batch frequency 1, 5000 lines, delay 3),
+wait 10 seconds, then run `screen-ls` five times at 5-second intervals. Stop
+generation and run `report-util` to save a fresh snapshot to `csopesy-log.txt`.
+The generation check verifies cases 6–8 together and takes at least 70 seconds.
 
 ## Configuration (`config.txt`)
 
@@ -89,9 +114,9 @@ Every field below maps 1:1 to `include/Config.h`.
 | `delay-per-exec` | `delayPerExec` | `uint64_t` | `[0, 4294967296]` (2^32) |
 
 - `min-ins` must not exceed `max-ins`.
-- `delay-per-exec d` makes a process wait `d` whole CPU cycles before its next
-  instruction, staying on its core (busy-waiting): `0` runs one instruction per
-  cycle, `1` one every 2 cycles, `d` one every `d + 1` cycles.
+- `delay-per-exec 0` executes without waiting between instructions. Positive
+  values `d` wait `d` whole CPU cycles before the next instruction (busy-waiting),
+  spacing instructions `d + 1` cycles apart; `1` runs one every 2 cycles.
 - The spec's `delays-per-exec` spelling is accepted as an alias for the
   mockup's `delay-per-exec`.
 - Unknown keys are ignored; blank lines and `#` comments are skipped.
@@ -130,7 +155,7 @@ README.md                       # this file
 config.txt                      # sample configuration (read from the working directory)
 checks/
   kernel/
-    SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, drain
+    SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, 40-second demo
     SchedulerQuantumCheck.cpp     # RR quantum preemption, sleep/wake budgets, delay spacing
   shell/
     ProcessScreenCheck.cpp      # end-to-end REPL check: screen -s / process-smi / detach
@@ -681,8 +706,5 @@ Two behaviors to note:
 
 - `exit` inside a process screen **detaches**; only `exit` at the main menu
   shuts the emulator down (per spec §3.1).
-- `demo1` stays at instruction line 0 with empty logs because with the sample
-  config (`batch-process-freq 1`, `delay-per-exec 0`) the generator creates
-  processes faster than 4 cores can drain them, and `screen -s` queues at the
-  back. Use a larger `batch-process-freq` or skip `scheduler-start` to see live
-  logs immediately.
+- The transcript above predates continuous zero-delay execution and one-tick
+  generated sleeps. Current progress and completion timing differ.

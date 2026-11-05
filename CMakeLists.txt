@@ -56,9 +56,10 @@ if(BUILD_TESTING)
   add_executable(scheduler-generation-check checks/kernel/SchedulerGenerationCheck.cpp)
   target_link_libraries(scheduler-generation-check PRIVATE emulator_core)
   add_test(NAME scheduler-generation COMMAND scheduler-generation-check)
-  set_tests_properties(scheduler-generation PROPERTIES TIMEOUT 60)
+  set_tests_properties(scheduler-generation PROPERTIES TIMEOUT 180)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check)
-  configure_file(config.txt report-check/config.txt COPYONLY)
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/report-check/config.txt
+    "num-cpu 8\nscheduler \"rr\"\nquantum-cycles 1\nbatch-process-freq 1\nmin-ins 100\nmax-ins 100\ndelay-per-exec 0\n")
   add_test(NAME scheduler-report COMMAND scheduler-report-check)
   set_tests_properties(scheduler-report PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check

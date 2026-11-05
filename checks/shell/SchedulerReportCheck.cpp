@@ -270,8 +270,8 @@ int main()
               "Finished rows must show total / total");
 
         std::istringstream commands(
-            "scheduler-start\ninitialize\n  screen\t-ls  \nreport-util\n"
-            "scheduler-stop\nscheduler-start\nscheduler-start\nscheduler-stop\nscheduler-stop\nexit\n");
+            "scheduler-test\ninitialize\n  screen\t-ls  \nscreen-ls\nreport-util\n"
+            "scheduler-stop\nscheduler-test\nscheduler-start\nscheduler-stop\nscheduler-stop\nexit\n");
         std::ostringstream output;
         auto *previousInput = std::cin.rdbuf(commands.rdbuf());
         auto *previousOutput = std::cout.rdbuf(output.rdbuf());
@@ -281,6 +281,8 @@ int main()
         const std::string expected = buildProcessReport({
             static_cast<std::size_t>(emulator.config().numCpu), finished});
         check(output.str().find(expected) != std::string::npos, "screen -ls did not print the report");
+        check(output.str().find(expected) != output.str().rfind(expected),
+              "screen-ls alias did not print the same report");
         check(output.str().find("System not yet initialized.") != std::string::npos,
               "scheduler-start was accepted before initialize");
         check(output.str().find("Process generation started.") != std::string::npos &&
