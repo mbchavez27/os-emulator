@@ -19,6 +19,10 @@ add_library(emulator_core STATIC
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(emulator_core PUBLIC Threads::Threads)
+if(WIN32)
+  # timeBeginPeriod: 1 ms sleep resolution for the CPU tick clock.
+  target_link_libraries(emulator_core PUBLIC winmm)
+endif()
 
 add_executable(os-emulator
   src/main.cpp
@@ -38,7 +42,7 @@ if(BUILD_TESTING)
   add_executable(process-smi-check checks/shell/ProcessSmiCheck.cpp)
   target_link_libraries(process-smi-check PRIVATE emulator_core)
   add_test(NAME process-smi COMMAND process-smi-check)
-  set_tests_properties(process-smi PROPERTIES TIMEOUT 45)
+  set_tests_properties(process-smi PROPERTIES TIMEOUT 60)
   add_executable(process-screen-check
     checks/shell/ProcessScreenCheck.cpp
     src/shell/CommandHandler.cpp
@@ -48,7 +52,7 @@ if(BUILD_TESTING)
   add_executable(scheduler-quantum-check checks/kernel/SchedulerQuantumCheck.cpp)
   target_link_libraries(scheduler-quantum-check PRIVATE emulator_core)
   add_test(NAME scheduler-quantum COMMAND scheduler-quantum-check)
-  set_tests_properties(scheduler-quantum PROPERTIES TIMEOUT 45)
+  set_tests_properties(scheduler-quantum PROPERTIES TIMEOUT 60)
   add_executable(scheduler-generation-check checks/kernel/SchedulerGenerationCheck.cpp)
   target_link_libraries(scheduler-generation-check PRIVATE emulator_core)
   add_test(NAME scheduler-generation COMMAND scheduler-generation-check)

@@ -6,6 +6,13 @@
 #include <thread>
 #include <utility>
 
+#ifdef _WIN32
+// Declared directly (winmm.lib) instead of including <windows.h>, whose macros
+// collide with names in this project.
+extern "C" __declspec(dllimport) unsigned int __stdcall timeBeginPeriod(unsigned int period);
+extern "C" __declspec(dllimport) unsigned int __stdcall timeEndPeriod(unsigned int period);
+#endif
+
 Scheduler::~Scheduler()
 {
     stop();
@@ -289,12 +296,21 @@ std::optional<ProcessView> Scheduler::findActiveProcessByName(const std::string 
 
 void Scheduler::tickLoop()
 {
+#ifdef _WIN32
+    // Windows rounds sleep_for(1ms) up to the ~15.6 ms system timer tick, which
+    // made the clock ~15x slower than on Linux/macOS. Request 1 ms resolution
+    // while the clock runs.
+    timeBeginPeriod(1);
+#endif
     while (running_.load(std::memory_order_acquire))
     {
         cycles_.fetch_add(1, std::memory_order_relaxed);
         cv_.notify_all();
         std::this_thread::sleep_for(kCycleInterval);
     }
+#ifdef _WIN32
+    timeEndPeriod(1);
+#endif
 }
 
 void Scheduler::dispatchLoop()
@@ -457,8 +473,9 @@ void Scheduler::generateProcessesLocked()
     const std::uint64_t now = cycles_.load(std::memory_order_relaxed);
     generationAccumulator_ += now - generationLastCycle_;
     generationLastCycle_ = now;
-    for (std::size_t created = 0;
-         created < kMaxGeneratedPerPass && generationAccumulator_ >= generationConfig_.batchProcessFreq;)
+    // batch-process-freq is at most 2^32, so the product fits in 64 bits.
+    const std::uint64_t interval = generationConfig_.batchProcessFreq * kTicksPerBatchCycle;
+    for (std::size_t created = 0; created < kMaxGeneratedPerPass && generationAccumulator_ >= interval;)
     {
         if (nextGeneratedNumber_ > std::numeric_limits<std::uint32_t>::max())
         {
@@ -475,7 +492,7 @@ void Scheduler::generateProcessesLocked()
         const auto id = static_cast<std::uint32_t>(nextGeneratedNumber_);
         enqueueProcessLocked(std::make_unique<Process>(
             id, name, generateProgram(generationConfig_, name, id)));
-        generationAccumulator_ -= generationConfig_.batchProcessFreq;
+        generationAccumulator_ -= interval;
         ++created;
     }
 }
