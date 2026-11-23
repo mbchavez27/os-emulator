@@ -130,6 +130,24 @@ bool readDelayPerExec(const std::map<std::string, std::string> &values,
     return false;
 }
 
+/** @brief Memory keys must be powers of 2 in [2^6, 2^16]. */
+bool readMemorySize(const std::map<std::string, std::string> &values,
+                    const std::string &key,
+                    uint64_t &result,
+                    std::string &error)
+{
+    if (!readNumber(values, key, 1ULL << 6, 1ULL << 16, result, error))
+    {
+        return false;
+    }
+    if ((result & (result - 1)) != 0)
+    {
+        error = "Config key '" + key + "' must be a power of 2, got '" + std::to_string(result) + "'.";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 std::optional<Config> Config::load(const std::string &path, std::string &error)
@@ -205,6 +223,26 @@ std::optional<Config> Config::load(const std::string &path, std::string &error)
         return std::nullopt;
     }
     config.delayPerExec = number;
+
+    if (!readMemorySize(values, "max-overall-mem", config.maxOverallMem, error) ||
+        !readMemorySize(values, "mem-per-frame", config.memPerFrame, error) ||
+        !readMemorySize(values, "min-mem-per-proc", config.minMemPerProc, error) ||
+        !readMemorySize(values, "max-mem-per-proc", config.maxMemPerProc, error))
+    {
+        return std::nullopt;
+    }
+    if (config.memPerFrame > config.maxOverallMem)
+    {
+        error = "'mem-per-frame' (" + std::to_string(config.memPerFrame) +
+                ") must not exceed 'max-overall-mem' (" + std::to_string(config.maxOverallMem) + ").";
+        return std::nullopt;
+    }
+    if (config.minMemPerProc > config.maxMemPerProc)
+    {
+        error = "'min-mem-per-proc' (" + std::to_string(config.minMemPerProc) +
+                ") must not exceed 'max-mem-per-proc' (" + std::to_string(config.maxMemPerProc) + ").";
+        return std::nullopt;
+    }
 
     error.clear();
     return config;

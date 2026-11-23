@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -42,6 +43,10 @@ void Scheduler::startLocked(const Config &config)
         quantumCycles_ = config.quantumCycles;
         cores_.assign(static_cast<std::size_t>(config.numCpu), CoreState{});
         nextCoreExecutionCycles_.assign(cores_.size(), 0);
+        if (!memory_.isConfigured())
+        {
+            configureMemoryLocked(config);
+        }
     }
 
     coreCount_.store(cores_.size(), std::memory_order_relaxed);
@@ -113,6 +118,7 @@ void Scheduler::stop()
         {
             ready_.push_back(core.processIndex);
         }
+        releaseIfFinishedLocked(core.processIndex);
         core = CoreState{};
     }
     for (const SleepEntry &entry : sleeping_)
@@ -126,6 +132,7 @@ void Scheduler::stop()
         {
             ready_.push_back(entry.processIndex);
         }
+        releaseIfFinishedLocked(entry.processIndex);
     }
 
     sleeping_.clear();
@@ -232,11 +239,18 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
     {
         nameInserted = processNames_.insert(name).second;
         nextProcessExecutionCycles_.resize(index + 1, 0);
+        if (!memory_.isConfigured())
+        {
+            configureMemoryLocked(memoryConfig_);
+        }
+        const std::uint64_t memoryBytes = rollMemoryBytesLocked(process->id());
         processes_.push_back(std::move(process));
+        memory_.allocate(index, memoryBytes);
         ready_.push_back(index);
     }
     catch (...)
     {
+        memory_.release(index);
         processes_.resize(index);
         nextProcessExecutionCycles_.resize(index);
         if (nameInserted)
@@ -251,7 +265,29 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
 std::vector<ProcessView> Scheduler::snapshot() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    return snapshotLocked();
+}
 
+SystemSnapshot Scheduler::systemSnapshot() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    SystemSnapshot system;
+    system.totalCores = cores_.size();
+    system.processes = snapshotLocked();
+    system.memory = memory_.stats();
+    system.activeTicks = activeTicks_;
+    system.idleTicks = idleTicks_;
+    return system;
+}
+
+void Scheduler::setBackingStorePath(std::string path)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    backingStorePath_ = std::move(path);
+}
+
+std::vector<ProcessView> Scheduler::snapshotLocked() const
+{
     std::vector<ProcessView> views;
     views.reserve(processes_.size());
     for (const std::unique_ptr<Process> &process : processes_)
@@ -267,6 +303,8 @@ std::vector<ProcessView> Scheduler::snapshot() const
         view.logStamps = process->logStamps();
         view.variables = process->variables();
         view.startedAt = process->startedAt();
+        view.memoryBytes = memory_.allocatedBytes(views.size());
+        view.residentBytes = memory_.residentBytes(views.size());
         views.push_back(std::move(view));
     }
     for (std::size_t core = 0; core < cores_.size(); ++core)
@@ -304,6 +342,14 @@ void Scheduler::tickLoop()
 #endif
     while (running_.load(std::memory_order_acquire))
     {
+        {
+            // Charge the tick to every core: busy cores are active, the rest idle.
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto busy = static_cast<std::uint64_t>(
+                std::count_if(cores_.begin(), cores_.end(), [](const CoreState &core) { return core.busy; }));
+            activeTicks_ += busy;
+            idleTicks_ += cores_.size() - busy;
+        }
         cycles_.fetch_add(1, std::memory_order_relaxed);
         cv_.notify_all();
         std::this_thread::sleep_for(kCycleInterval);
@@ -400,6 +446,7 @@ void Scheduler::workerLoop(std::size_t core)
                 delayForExec(nextExecutionCycle, quantumEndCycle);
                 continue;
             }
+            touchNextPageLocked(index);
             outcome = process->step(core);
             const auto executedCycle = cycles_.load(std::memory_order_relaxed);
             nextCoreExecutionCycles_[core] = executedCycle + (delayPerExec_ == 0 ? 0 : 1);
@@ -416,6 +463,7 @@ void Scheduler::workerLoop(std::size_t core)
                                cycles_.load(std::memory_order_relaxed) +
                                    process->sleepTicksRemaining()});
             }
+            releaseIfFinishedLocked(index);
             if (outcome == StepOutcome::SLEEPING || outcome == StepOutcome::FINISHED)
             {
                 cores_[core] = CoreState{};
@@ -460,6 +508,7 @@ void Scheduler::reapSleepersLocked()
         {
             ready_.push_back(it->processIndex);
         }
+        releaseIfFinishedLocked(it->processIndex);
         it = sleeping_.erase(it);
     }
 }
@@ -518,4 +567,52 @@ bool Scheduler::canDispatchLocked() const
     return !ready_.empty() &&
            std::any_of(cores_.begin(), cores_.end(),
                        [](const CoreState &core) { return !core.busy; });
+}
+
+void Scheduler::configureMemoryLocked(const Config &config)
+{
+    memory_.configure(config, backingStorePath_);
+    memoryConfig_ = config;
+}
+
+void Scheduler::touchNextPageLocked(std::size_t index)
+{
+    // Instructions are spread evenly over the address space, so execution
+    // walks the pages in order and FOR loops revisit earlier ones.
+    const Process &process = *processes_[index];
+    const std::size_t pages = memory_.pageCount(index);
+    const std::size_t lines = process.linesOfCode();
+    if (pages == 0 || lines == 0)
+    {
+        return;
+    }
+    // Page faults are served within the same tick, so paging never changes
+    // instruction timing.
+    memory_.access(index, process.nextInstructionIndex() * pages / lines);
+}
+
+void Scheduler::releaseIfFinishedLocked(std::size_t index)
+{
+    if (processes_[index]->isFinished())
+    {
+        memory_.release(index);
+    }
+}
+
+std::uint64_t Scheduler::rollMemoryBytesLocked(std::uint32_t id) const
+{
+    auto exponentOf = [](std::uint64_t value) {
+        int exponent = 0;
+        while (value > 1)
+        {
+            value >>= 1;
+            ++exponent;
+        }
+        return exponent;
+    };
+    const std::uint64_t minBytes = std::max<std::uint64_t>(memoryConfig_.minMemPerProc, 1);
+    const std::uint64_t maxBytes = std::max(memoryConfig_.maxMemPerProc, minBytes);
+    std::mt19937 rng(id ^ 0x9E3779B9u);
+    std::uniform_int_distribution<int> pick(exponentOf(minBytes), exponentOf(maxBytes));
+    return std::uint64_t{1} << pick(rng);
 }

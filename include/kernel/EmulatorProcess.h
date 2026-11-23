@@ -88,6 +88,9 @@ public:
     /** @return the flattened program size, shown as `Lines of code:` */
     std::size_t linesOfCode() const noexcept;
 
+    /** @return the 0-based index of the next instruction to run; linesOfCode() once finished */
+    std::size_t nextInstructionIndex() const noexcept;
+
     /** @return the ticks left in the current SLEEP, or 0 when awake */
     std::uint8_t sleepTicksRemaining() const noexcept;
 

@@ -74,6 +74,7 @@ marquee_app
 
 # Generated CPU utilization report
 csopesy-log.txt
+csopesy-backing-store.txt
 
 # IDE / editor
 .vscode/

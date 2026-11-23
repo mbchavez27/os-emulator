@@ -2,6 +2,7 @@
 #include "system/Emulator.h"
 #include "shell/AsciiArt.h"
 #include "shell/ConsoleColors.h"
+#include "shell/MemoryReport.h"
 #include "shell/ProcessReport.h"
 #include "shell/ProcessSmi.h"
 #include <algorithm>
@@ -196,6 +197,19 @@ void CommandHandler::dispatch(const std::string &command, std::istringstream &ar
     else if (command == "report-util")
     {
         saveReport();
+    }
+    else if (command == "process-smi" || command == "vmstat")
+    {
+        if (!hasNoMoreWords(arguments))
+        {
+            respond(console_colors::FAILURE, "Usage: " + command);
+            return;
+        }
+        // Copy under the scheduler lock, then format and print with no lock held.
+        const SystemSnapshot snapshot = emulator.scheduler().systemSnapshot();
+        std::string text = command == "vmstat" ? buildVmstat(snapshot) : buildProcessSmiSummary(snapshot);
+        text.pop_back(); // respond() supplies the line breaks after the message.
+        respond(console_colors::INFO, text);
     }
     else
     {

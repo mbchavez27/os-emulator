@@ -1,5 +1,6 @@
 #include "kernel/EmulatorProcess.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
@@ -122,6 +123,11 @@ std::size_t Process::currentLine() const noexcept
 std::size_t Process::linesOfCode() const noexcept
 {
     return code_.size();
+}
+
+std::size_t Process::nextInstructionIndex() const noexcept
+{
+    return isFinished() ? code_.size() : std::min(pc_, code_.size());
 }
 
 std::uint8_t Process::sleepTicksRemaining() const noexcept

@@ -56,8 +56,17 @@ public:
         {
             return false;
         }
+        scheduler_.setBackingStorePath(kBackingStorePath);
+        try
+        {
+            scheduler_.start(*loaded);
+        }
+        catch (const std::exception &startError)
+        {
+            error = startError.what();
+            return false;
+        }
         config_ = std::move(*loaded);
-        scheduler_.start(*config_);
         return true;
     }
 
@@ -95,6 +104,9 @@ public:
     {
         return scheduler_;
     }
+
+    /** @brief Where evicted pages are written, next to csopesy-log.txt. */
+    static constexpr const char *kBackingStorePath = "csopesy-backing-store.txt";
 
 private:
     bool alive_ = true;            /**< Cleared only by exitApp(). */

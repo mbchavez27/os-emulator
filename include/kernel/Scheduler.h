@@ -2,6 +2,7 @@
 
 #include "config/Config.h"
 #include "kernel/EmulatorProcess.h"
+#include "kernel/MemoryManager.h"
 
 #include <atomic>
 #include <chrono>
@@ -32,6 +33,18 @@ struct ProcessView
     std::map<std::string, std::uint16_t> variables;
     std::chrono::system_clock::time_point startedAt;
     std::optional<std::size_t> core; /**< Empty for ready, sleeping, or finished processes. */
+    std::uint64_t memoryBytes = 0;   /**< Allocated virtual memory; 0 once finished. */
+    std::uint64_t residentBytes = 0; /**< Physical memory its resident pages occupy. */
+};
+
+/** @brief Everything process-smi and vmstat print, copied under one lock. */
+struct SystemSnapshot
+{
+    std::size_t totalCores = 0;         /**< Cores of the running CPU. */
+    std::vector<ProcessView> processes; /**< Every process, in submission order. */
+    MemoryStats memory;                 /**< Frame and paging counters. */
+    std::uint64_t activeTicks = 0;      /**< Core-ticks spent with a process assigned. */
+    std::uint64_t idleTicks = 0;        /**< Core-ticks spent with no process. */
 };
 
 /**
@@ -139,6 +152,19 @@ public:
     /** @return a copy of every process, in submission order */
     std::vector<ProcessView> snapshot() const;
 
+    /** @return processes, memory counters, and CPU tick counters from one moment */
+    SystemSnapshot systemSnapshot() const;
+
+    /**
+     * @brief Names the backing-store file the memory manager writes evicted pages to.
+     *
+     * Takes effect at the first start() or process submission. Without it an
+     * anonymous temporary file is used, so checks never share a file.
+     *
+     * @param path the file, truncated when the memory manager starts
+     */
+    void setBackingStorePath(std::string path);
+
     /**
      * @brief CPU ticks in one batch-generation cycle.
      *
@@ -189,6 +215,17 @@ private:
     bool hasProcessNamedLocked(const std::string &name) const;
     void assignReadyLocked();
     bool canDispatchLocked() const;
+    std::vector<ProcessView> snapshotLocked() const;
+    void configureMemoryLocked(const Config &config);
+    void touchNextPageLocked(std::size_t index);
+    void releaseIfFinishedLocked(std::size_t index);
+
+    /**
+     * @brief Rolls a process's memory size: a power of 2 in [min, max]-mem-per-proc.
+     *
+     * Seeded by the process ID, like generateProgram(), so runs are repeatable.
+     */
+    std::uint64_t rollMemoryBytesLocked(std::uint32_t id) const;
 
     /**
      * @brief Pause between CPU ticks.
@@ -231,6 +268,12 @@ private:
     std::vector<std::unique_ptr<Process>> processes_;
     std::unordered_set<std::string> processNames_; /**< Names in processes_; O(1) duplicate checks. */
     std::vector<std::uint64_t> nextProcessExecutionCycles_; /**< Survives preemption and stop/resume. */
+
+    MemoryManager memory_;        /**< Demand-paging allocator; used only under mutex_. */
+    Config memoryConfig_;         /**< Memory keys in force; defaults until start(). */
+    std::string backingStorePath_; /**< Empty: anonymous temporary file. */
+    std::uint64_t activeTicks_ = 0;
+    std::uint64_t idleTicks_ = 0;
 
     std::thread clockThread_;
     std::thread dispatchThread_;

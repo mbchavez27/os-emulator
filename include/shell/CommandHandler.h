@@ -47,6 +47,8 @@ private:
      * @brief Routes one main-menu command to its handler.
      *
      * Only `initialize` and `exit` are accepted before initialization.
+     * `process-smi` and `vmstat` print the memory summaries; inside a process
+     * screen `process-smi` means the per-process view instead.
      *
      * @param command the first word the user typed
      * @param arguments the remaining words

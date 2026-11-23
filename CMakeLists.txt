@@ -12,7 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(emulator_core STATIC
   src/config/Config.cpp
   src/kernel/Instruction.cpp
+  src/kernel/MemoryManager.cpp
   src/kernel/Process.cpp
+  src/shell/MemoryReport.cpp
   src/shell/ProcessReport.cpp
   src/shell/ProcessSmi.cpp
   src/kernel/Scheduler.cpp
@@ -59,11 +61,19 @@ if(BUILD_TESTING)
   set_tests_properties(scheduler-generation PROPERTIES TIMEOUT 180)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check)
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/report-check/config.txt
-    "num-cpu 8\nscheduler \"rr\"\nquantum-cycles 1\nbatch-process-freq 1\nmin-ins 100\nmax-ins 100\ndelay-per-exec 0\n")
+    "num-cpu 8\nscheduler \"rr\"\nquantum-cycles 1\nbatch-process-freq 1\nmin-ins 100\nmax-ins 100\ndelay-per-exec 0\nmax-overall-mem 1024\nmem-per-frame 64\nmin-mem-per-proc 256\nmax-mem-per-proc 1024\n")
   add_test(NAME scheduler-report COMMAND scheduler-report-check)
   set_tests_properties(scheduler-report PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check
   )
+  add_executable(memory-manager-check checks/kernel/MemoryManagerCheck.cpp)
+  target_link_libraries(memory-manager-check PRIVATE emulator_core)
+  add_test(NAME memory-manager COMMAND memory-manager-check)
+  set_tests_properties(memory-manager PROPERTIES TIMEOUT 60)
+  add_executable(memory-report-check checks/shell/MemoryReportCheck.cpp)
+  target_link_libraries(memory-report-check PRIVATE emulator_core)
+  add_test(NAME memory-report COMMAND memory-report-check)
+  set_tests_properties(memory-report PROPERTIES TIMEOUT 60)
   add_test(NAME process-screen COMMAND process-screen-check)
   set_tests_properties(process-screen PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check
@@ -74,7 +84,7 @@ endif()
 # Compiler-specific warning flags
 set(warning_targets emulator_core os-emulator)
 if(BUILD_TESTING)
-  list(APPEND warning_targets scheduler-report-check process-smi-check process-screen-check scheduler-quantum-check scheduler-generation-check)
+  list(APPEND warning_targets scheduler-report-check process-smi-check process-screen-check scheduler-quantum-check scheduler-generation-check memory-manager-check memory-report-check)
 endif()
 foreach(target ${warning_targets})
   if(MSVC)

@@ -29,30 +29,6 @@ std::string formatStartTime(std::chrono::system_clock::time_point time)
     return out.str();
 }
 
-/**
- * @brief Formats CPU utilization as in the mockup.
- *
- * @param used cores running a process
- * @param total configured cores
- * @return "100%" for whole numbers, "33.33%" otherwise; "0%" when total is 0
- */
-std::string formatUtilization(std::size_t used, std::size_t total)
-{
-    std::ostringstream out;
-    out.imbue(std::locale::classic());
-    if (total == 0 || (used * 100) % total == 0)
-    {
-        out << (total == 0 ? 0 : used * 100 / total);
-    }
-    else
-    {
-        out << std::fixed << std::setprecision(2)
-            << 100.0 * static_cast<double>(used) / static_cast<double>(total);
-    }
-    out << "%";
-    return out.str();
-}
-
 void appendRow(std::ostringstream &report, const ProcessView &process, std::size_t nameWidth)
 {
     std::string status;
@@ -73,6 +49,24 @@ void appendRow(std::ostringstream &report, const ProcessView &process, std::size
 }
 
 } // namespace
+
+std::string formatUtilization(std::size_t used, std::size_t total)
+{
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    if (total == 0 || (used * 100) % total == 0)
+    {
+        out << (total == 0 ? 0 : used * 100 / total);
+    }
+    else
+    {
+        out << std::fixed << std::setprecision(2)
+            << 100.0 * static_cast<double>(used) / static_cast<double>(total);
+    }
+    out << "%";
+    return out.str();
+}
+
 
 std::string buildProcessReport(const ProcessReportSnapshot &snapshot)
 {
