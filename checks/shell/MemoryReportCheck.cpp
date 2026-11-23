@@ -50,37 +50,50 @@ int main()
         snapshot.idleTicks = 4021;
 
         check(buildProcessSmiSummary(snapshot) ==
-                  "--------------------------------------------\n"
+                  "----------------------------------------------\n"
                   "| PROCESS-SMI V01.00 Driver Version: 01.00 |\n"
-                  "--------------------------------------------\n"
+                  "----------------------------------------------\n"
                   "CPU-Util: 25%\n"
                   "Memory Usage: 1024B / 16384B\n"
-                  "Memory Util: 6.25%\n"
+                  "Memory Util: 6%\n"
                   "\n"
-                  "============================================\n"
+                  "==============================================\n"
                   "Running processes and memory usage:\n"
-                  "--------------------------------------------\n"
+                  "----------------------------------------------\n"
                   "p01 256B\n"
                   "p02 768B\n"
                   "p03 0B\n"
-                  "--------------------------------------------\n",
+                  "----------------------------------------------\n",
               "process-smi layout is wrong");
 
         check(buildVmstat(snapshot) ==
-                  "       16384 B total memory\n"
-                  "        1024 B used memory\n"
-                  "       15360 B free memory\n"
-                  "        1024 total frames\n"
-                  "          64 used frames\n"
-                  "         960 free frames\n"
-                  "           1 active processes\n"
-                  "           2 inactive processes\n"
-                  "        4021 idle cpu ticks\n"
-                  "        9822 active cpu ticks\n"
-                  "       13843 total cpu ticks\n"
-                  "          57 num paged in\n"
-                  "          12 num paged out\n",
+                  "        16384 B total memory\n"
+                  "         1024 B used memory\n"
+                  "        15360 B free memory\n"
+                  "         1024 total frames\n"
+                  "           64 used frames\n"
+                  "          960 free frames\n"
+                  "            1 active processes\n"
+                  "            2 inactive processes\n"
+                  "         4021 idle cpu ticks\n"
+                  "         9822 active cpu ticks\n"
+                  "        13843 total cpu ticks\n"
+                  "           57 num paged in\n"
+                  "           12 num paged out\n",
               "vmstat layout is wrong");
+
+        // Percentages round to whole numbers, as in the mockup's 1245MiB / 4799MiB = 26%.
+        SystemSnapshot rounded;
+        rounded.totalCores = 3;
+        rounded.processes = {process("a", ProcessState::RUNNING, 0, 0)};
+        rounded.memory.totalBytes = 4799;
+        rounded.memory.usedBytes = 1245;
+        const std::string roundedText = buildProcessSmiSummary(rounded);
+        check(roundedText.find("Memory Util: 26%\n") != std::string::npos, "Memory Util must round to 26%");
+        check(roundedText.find("CPU-Util: 33%\n") != std::string::npos, "CPU-Util must round to 33%");
+        rounded.memory.usedBytes = 4799;
+        check(buildProcessSmiSummary(rounded).find("Memory Util: 100%\n") != std::string::npos,
+              "Full memory must be 100%");
 
         // Empty system: no division by zero, no process rows.
         const std::string empty = buildProcessSmiSummary(SystemSnapshot{});

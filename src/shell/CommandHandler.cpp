@@ -207,9 +207,18 @@ void CommandHandler::dispatch(const std::string &command, std::istringstream &ar
         }
         // Copy under the scheduler lock, then format and print with no lock held.
         const SystemSnapshot snapshot = emulator.scheduler().systemSnapshot();
-        std::string text = command == "vmstat" ? buildVmstat(snapshot) : buildProcessSmiSummary(snapshot);
-        text.pop_back(); // respond() supplies the line breaks after the message.
-        respond(console_colors::INFO, text);
+        if (command == "vmstat")
+        {
+            std::string text = buildVmstat(snapshot);
+            text.pop_back(); // respond() supplies the line breaks after the message.
+            respond(console_colors::INFO, text);
+        }
+        else
+        {
+            // The mockup has a blank line before the box and none after the closing rule.
+            std::cout << "\n" << console_colors::INFO << buildProcessSmiSummary(snapshot)
+                      << console_colors::RESET;
+        }
     }
     else
     {

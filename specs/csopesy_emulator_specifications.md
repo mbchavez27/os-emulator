@@ -71,3 +71,43 @@ The `initialize` command reads processor configuration and process attributes fr
 | `min-ins` | Minimum instructions/command per process. | `[1, 2^32]` |
 | `max-ins` | Maximum instructions/command per process. | `[1, 2^32]` |
 | `delays-per-exec` | Delay before executing the next instruction in CPU cycles (busy-waiting). If 0, executes per cycle. | `[0, 2^32]` |
+
+## 7. MO2 Memory Visualization
+There must be a way to visualize and debug memory: `process-smi` gives a high-level overview of available/used memory, and `vmstat` gives fine-grained memory details.
+
+### 7.1 `process-smi` mockup
+Similar to `nvidia-smi`: a summarized view of memory allocation and processor utilization. Transcribed from the spec image (there is a blank line between the command and the first rule, and the prompt follows the closing rule directly):
+
+```text
+root:\> process-smi
+
+----------------------------------------------
+| PROCESS-SMI V01.00 Driver Version: 01.00 |
+----------------------------------------------
+CPU-Util: 100%
+Memory Usage: 1245MiB / 4799MiB
+Memory Util: 26%
+
+==============================================
+Running processes and memory usage:
+----------------------------------------------
+process05 134MiB
+process06 134MiB
+process07 977MiB
+----------------------------------------------
+root:\>
+```
+
+### 7.2 `vmstat`
+"You can follow a similar layout from vmstat": the spec shows Linux `vmstat -s` output (numbers right-aligned in a 13-character column, then the label, e.g. `     16366040 K total memory`, `     76488300 idle cpu ticks`, `      5643394 pages paged in`).
+
+| Field | Description |
+| :--- | :--- |
+| Total memory | Total main memory in bytes. |
+| Used memory | Total active memory used by processes. |
+| Free memory | Total free memory that can still be used by other processes. |
+| Idle cpu ticks | Number of ticks wherein CPU cores remained idle. |
+| Active cpu ticks | Number of ticks wherein CPU cores are actually executing instructions. |
+| Total cpu ticks | Number of ticks that passed for all CPU cores. |
+| Num paged in | Accumulated number of pages paged in. |
+| Num paged out | Accumulated number of pages paged out. |

@@ -1,7 +1,5 @@
 #include "shell/MemoryReport.h"
 
-#include "shell/ProcessReport.h"
-
 #include <algorithm>
 #include <iomanip>
 #include <locale>
@@ -10,9 +8,24 @@
 namespace
 {
 
-const char *const kRule = "--------------------------------------------\n";
-const char *const kDoubleRule = "============================================\n";
-constexpr int kValueWidth = 12; /**< vmstat's right-aligned number column. */
+// Rules are 46 characters, two wider than the 44-character box line, as in the mockup.
+const char *const kRule = "----------------------------------------------\n";
+const char *const kDoubleRule = "==============================================\n";
+constexpr int kValueWidth = 13; /**< vmstat -s's right-aligned number column. */
+
+/**
+ * @brief Formats a share as a whole percentage, rounded, as in the mockup ("26%").
+ *
+ * @return "0%" when total is 0
+ */
+std::string formatWholePercent(std::uint64_t used, std::uint64_t total)
+{
+    if (total == 0)
+    {
+        return "0%";
+    }
+    return std::to_string((used * 200 + total) / (total * 2)) + "%";
+}
 
 bool isActive(const ProcessView &process)
 {
@@ -36,11 +49,10 @@ std::string buildProcessSmiSummary(const SystemSnapshot &snapshot)
     out << kRule
         << "| PROCESS-SMI V01.00 Driver Version: 01.00 |\n"
         << kRule
-        << "CPU-Util: " << formatUtilization(busyCores, snapshot.totalCores) << "\n"
+        << "CPU-Util: " << formatWholePercent(busyCores, snapshot.totalCores) << "\n"
         << "Memory Usage: " << snapshot.memory.usedBytes << "B / " << snapshot.memory.totalBytes << "B\n"
         << "Memory Util: "
-        << formatUtilization(static_cast<std::size_t>(snapshot.memory.usedBytes),
-                             static_cast<std::size_t>(snapshot.memory.totalBytes))
+        << formatWholePercent(snapshot.memory.usedBytes, snapshot.memory.totalBytes)
         << "\n\n"
         << kDoubleRule
         << "Running processes and memory usage:\n"
