@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 
 void MemoryManager::FileCloser::operator()(std::FILE *file) const noexcept
@@ -13,9 +15,9 @@ MemoryManager::~MemoryManager() = default;
 
 void MemoryManager::configure(const Config &config, const std::string &backingStorePath)
 {
-    if (config.memPerFrame == 0 || config.memPerFrame > config.maxOverallMem)
+    if (config.memPerFrame < 2 || config.memPerFrame % 2 != 0 || config.memPerFrame > config.maxOverallMem)
     {
-        throw std::invalid_argument("mem-per-frame must be in [1, max-overall-mem]");
+        throw std::invalid_argument("mem-per-frame must be even and in [2, max-overall-mem]");
     }
 
     std::FILE *file = backingStorePath.empty() ? std::tmpfile()
@@ -28,7 +30,11 @@ void MemoryManager::configure(const Config &config, const std::string &backingSt
     store_.reset(file);
 
     frameSize_ = config.memPerFrame;
+    // Header, "| ", then one 4-digit hex word plus separator per 2 bytes; the
+    // last separator becomes the newline.
+    recordWidth_ = kHeaderWidth + 2 + static_cast<std::size_t>(frameSize_ / 2) * 5;
     const auto frameCount = static_cast<std::size_t>(config.maxOverallMem / config.memPerFrame);
+    physical_.assign(static_cast<std::size_t>(frameCount * frameSize_), 0);
     frames_.assign(frameCount, std::nullopt);
     freeFrames_.clear();
     // Reversed so frames are handed out from 0 upwards.
@@ -50,7 +56,7 @@ bool MemoryManager::isConfigured() const noexcept
     return store_ != nullptr;
 }
 
-void MemoryManager::allocate(std::size_t pid, std::uint64_t bytes)
+void MemoryManager::allocate(std::size_t pid, std::uint64_t bytes, std::optional<std::uint32_t> processId)
 {
     if (!isConfigured())
     {
@@ -62,6 +68,7 @@ void MemoryManager::allocate(std::size_t pid, std::uint64_t bytes)
     }
     AddressSpace space;
     space.bytes = bytes;
+    space.processId = processId ? *processId : pid;
     space.pages.resize(static_cast<std::size_t>((bytes + frameSize_ - 1) / frameSize_));
     spaces_.emplace(pid, std::move(space));
 }
@@ -87,11 +94,14 @@ bool MemoryManager::access(std::size_t pid, std::size_t page)
     const std::size_t frame = takeFrame();
     // Looked up again: evict() only edits entries, so `it` stays valid.
     PageEntry &entry = it->second.pages[page];
+    // First touch reads zeros; a page coming back from the store gets its bytes restored.
+    std::memset(frameBytes(frame), 0, static_cast<std::size_t>(frameSize_));
     if (entry.slot)
     {
-        if (!readSlot(*entry.slot, pid, page))
+        if (!readSlot(*entry.slot, frame, it->second.processId, page))
         {
             ++corruptReads_;
+            std::memset(frameBytes(frame), 0, static_cast<std::size_t>(frameSize_));
         }
         freeSlots_.push_back(*entry.slot);
         entry.slot.reset();
@@ -102,6 +112,50 @@ bool MemoryManager::access(std::size_t pid, std::size_t page)
     ++it->second.residentPages;
     ++pagedIn_;
     return true;
+}
+
+std::uint16_t MemoryManager::read16(std::size_t pid, std::uint64_t address)
+{
+    checkRange(pid, address);
+    // Copy each byte before touching the next: loading the second page may evict the first.
+    const std::uint8_t low = byteAt(pid, address);
+    const std::uint8_t high = byteAt(pid, address + 1);
+    return static_cast<std::uint16_t>(low | (high << 8));
+}
+
+void MemoryManager::write16(std::size_t pid, std::uint64_t address, std::uint16_t value)
+{
+    checkRange(pid, address);
+    byteAt(pid, address) = static_cast<std::uint8_t>(value & 0xFF);
+    byteAt(pid, address + 1) = static_cast<std::uint8_t>(value >> 8);
+}
+
+void MemoryManager::checkRange(std::size_t pid, std::uint64_t address) const
+{
+    const auto it = spaces_.find(pid);
+    if (it == spaces_.end())
+    {
+        throw std::logic_error("Process " + std::to_string(pid) + " has no memory");
+    }
+    if (it->second.bytes < 2 || address > it->second.bytes - 2)
+    {
+        std::ostringstream hex;
+        hex << "0x" << std::uppercase << std::hex << address;
+        throw std::out_of_range(hex.str());
+    }
+}
+
+std::uint8_t &MemoryManager::byteAt(std::size_t pid, std::uint64_t address)
+{
+    const auto page = static_cast<std::size_t>(address / frameSize_);
+    access(pid, page);
+    const std::size_t frame = *spaces_.at(pid).pages[page].frame;
+    return frameBytes(frame)[address % frameSize_];
+}
+
+std::uint8_t *MemoryManager::frameBytes(std::size_t frame)
+{
+    return physical_.data() + frame * frameSize_;
 }
 
 void MemoryManager::release(std::size_t pid)
@@ -181,7 +235,7 @@ void MemoryManager::evict(std::size_t frame)
     const FrameOwner owner = *frames_[frame];
     PageEntry &entry = spaces_.at(owner.pid).pages[owner.page];
     const std::size_t slot = takeSlot();
-    writeSlot(slot, owner.pid, owner.page);
+    writeSlot(slot, frame, spaces_.at(owner.pid).processId, owner.page);
     entry.frame.reset();
     entry.slot = slot;
     --spaces_.at(owner.pid).residentPages;
@@ -201,36 +255,71 @@ std::size_t MemoryManager::takeSlot()
     return nextSlot_++;
 }
 
-std::string MemoryManager::record(std::size_t pid, std::size_t page) const
+std::string MemoryManager::recordHeader(std::uint64_t processId, std::size_t page) const
 {
-    // e.g. "pid=12 page=3", space-padded to a fixed width so slots can be overwritten in place.
-    std::string text = "pid=" + std::to_string(pid) + " page=" + std::to_string(page);
-    text.resize(kRecordWidth - 1, ' ');
-    text.push_back('\n');
-    return text;
+    // e.g. "pid=12 page=3", space-padded so every record has the same width.
+    std::string header = "pid=" + std::to_string(processId) + " page=" + std::to_string(page);
+    header.resize(kHeaderWidth, ' ');
+    return header;
 }
 
-void MemoryManager::writeSlot(std::size_t slot, std::size_t pid, std::size_t page)
+void MemoryManager::writeSlot(std::size_t slot, std::size_t frame, std::uint64_t processId, std::size_t page)
 {
-    const std::string text = record(pid, page);
-    if (std::fseek(store_.get(), static_cast<long>(slot * kRecordWidth), SEEK_SET) != 0 ||
-        std::fwrite(text.data(), 1, text.size(), store_.get()) != text.size())
+    // "pid=3 page=12 ... | 0000 002A ...\n": the page as little-endian uint16 words in hex.
+    std::ostringstream text;
+    text << recordHeader(processId, page) << "| " << std::uppercase << std::hex << std::setfill('0');
+    const std::uint8_t *bytes = frameBytes(frame);
+    for (std::uint64_t offset = 0; offset < frameSize_; offset += 2)
     {
-        // The page is still tracked in memory; a failed read-back counts as corrupt.
+        if (offset != 0)
+        {
+            text << ' ';
+        }
+        text << std::setw(4) << (bytes[offset] | (bytes[offset + 1] << 8));
+    }
+    text << '\n';
+    const std::string record = text.str();
+    if (std::fseek(store_.get(), static_cast<long>(slot * recordWidth_), SEEK_SET) != 0 ||
+        std::fwrite(record.data(), 1, record.size(), store_.get()) != record.size())
+    {
+        // The read-back check will count this page as corrupt.
         std::clearerr(store_.get());
     }
     std::fflush(store_.get());
 }
 
-bool MemoryManager::readSlot(std::size_t slot, std::size_t pid, std::size_t page)
+bool MemoryManager::readSlot(std::size_t slot, std::size_t frame, std::uint64_t processId, std::size_t page)
 {
-    char buffer[kRecordWidth];
-    if (std::fseek(store_.get(), static_cast<long>(slot * kRecordWidth), SEEK_SET) != 0 ||
-        std::fread(buffer, 1, kRecordWidth, store_.get()) != kRecordWidth)
+    std::string record(recordWidth_, '\0');
+    if (std::fseek(store_.get(), static_cast<long>(slot * recordWidth_), SEEK_SET) != 0 ||
+        std::fread(&record[0], 1, recordWidth_, store_.get()) != recordWidth_)
     {
         std::clearerr(store_.get());
         return false;
     }
-    const std::string expected = record(pid, page);
-    return std::memcmp(buffer, expected.data(), kRecordWidth) == 0;
+    if (record.compare(0, kHeaderWidth, recordHeader(processId, page)) != 0 ||
+        record.compare(kHeaderWidth, 2, "| ") != 0 || record.back() != '\n')
+    {
+        return false;
+    }
+
+    std::uint8_t *bytes = frameBytes(frame);
+    std::size_t position = kHeaderWidth + 2;
+    for (std::uint64_t offset = 0; offset < frameSize_; offset += 2, position += 5)
+    {
+        unsigned value = 0;
+        for (std::size_t digit = 0; digit < 4; ++digit)
+        {
+            const char c = record[position + digit];
+            const int nibble = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
+            if (nibble < 0)
+            {
+                return false;
+            }
+            value = value * 16 + static_cast<unsigned>(nibble);
+        }
+        bytes[offset] = static_cast<std::uint8_t>(value & 0xFF);
+        bytes[offset + 1] = static_cast<std::uint8_t>(value >> 8);
+    }
+    return true;
 }

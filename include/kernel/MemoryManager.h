@@ -35,6 +35,12 @@ struct MemoryStats
  * and its frame reused. Evicted pages are read back from that file when
  * touched again.
  *
+ * Frames hold real bytes in a pool pre-allocated at configure(). A page
+ * faulted in for the first time is zero-filled; an evicted page's bytes are
+ * written to its backing-store record as uint16 words in hex and restored on
+ * page-in, so read16() returns what write16() stored across any number of
+ * evictions.
+ *
  * Not thread-safe: Scheduler calls it only while holding its mutex.
  */
 class MemoryManager
@@ -66,9 +72,10 @@ public:
      *
      * @param pid a unique key for the process (the scheduler passes its process index)
      * @param bytes the process's memory size; rounded up to whole pages
+     * @param processId the ID shown in backing-store records; defaults to pid
      * @throws std::logic_error if not configured or pid is already allocated
      */
-    void allocate(std::size_t pid, std::uint64_t bytes);
+    void allocate(std::size_t pid, std::uint64_t bytes, std::optional<std::uint32_t> processId = std::nullopt);
 
     /**
      * @brief Touches one page, loading it on demand.
@@ -79,6 +86,31 @@ public:
      * @throws std::logic_error if pid is not allocated
      */
     bool access(std::size_t pid, std::size_t page);
+
+    /**
+     * @brief Reads a little-endian uint16 from a process's memory.
+     *
+     * Both bytes go through access(), so missing pages fault in. Memory never
+     * written reads as 0.
+     *
+     * @param pid an allocated process
+     * @param address byte offset in the process's memory; address + 1 must be in range
+     * @return the stored value
+     * @throws std::out_of_range if either byte is outside the process's memory
+     * @throws std::logic_error if pid is not allocated
+     */
+    std::uint16_t read16(std::size_t pid, std::uint64_t address);
+
+    /**
+     * @brief Writes a little-endian uint16 to a process's memory.
+     *
+     * @param pid an allocated process
+     * @param address byte offset in the process's memory; address + 1 must be in range
+     * @param value the value to store
+     * @throws std::out_of_range if either byte is outside the process's memory
+     * @throws std::logic_error if pid is not allocated
+     */
+    void write16(std::size_t pid, std::uint64_t address, std::uint16_t value);
 
     /** @brief Frees a process's frames and backing-store slots; no-op if unknown. */
     void release(std::size_t pid);
@@ -107,6 +139,7 @@ private:
     struct AddressSpace
     {
         std::uint64_t bytes = 0;
+        std::uint64_t processId = 0; /**< Shown as `pid=` in backing-store records. */
         std::vector<PageEntry> pages;
         std::size_t residentPages = 0;
     };
@@ -121,12 +154,15 @@ private:
     std::size_t takeFrame();
     void evict(std::size_t frame);
     std::size_t takeSlot();
-    std::string record(std::size_t pid, std::size_t page) const;
-    void writeSlot(std::size_t slot, std::size_t pid, std::size_t page);
-    bool readSlot(std::size_t slot, std::size_t pid, std::size_t page);
+    std::string recordHeader(std::uint64_t processId, std::size_t page) const;
+    void writeSlot(std::size_t slot, std::size_t frame, std::uint64_t processId, std::size_t page);
+    bool readSlot(std::size_t slot, std::size_t frame, std::uint64_t processId, std::size_t page);
+    std::uint8_t *frameBytes(std::size_t frame);
+    std::uint8_t &byteAt(std::size_t pid, std::uint64_t address);
+    void checkRange(std::size_t pid, std::uint64_t address) const;
 
-    /** @brief Fixed width of one backing-store record, newline included. */
-    static constexpr std::size_t kRecordWidth = 32;
+    /** @brief Width of a record's space-padded `pid=… page=…` header. */
+    static constexpr std::size_t kHeaderWidth = 32;
 
     struct FileCloser
     {
@@ -134,6 +170,8 @@ private:
     };
 
     std::uint64_t frameSize_ = 0;
+    std::size_t recordWidth_ = 0;         /**< Bytes per backing-store record, newline included. */
+    std::vector<std::uint8_t> physical_;  /**< max-overall-mem bytes; frame f starts at f * frameSize_. */
     std::vector<std::optional<FrameOwner>> frames_;
     std::vector<std::size_t> freeFrames_;
     std::deque<std::size_t> loadOrder_; /**< Resident frames, oldest load first (FIFO). */
