@@ -4,6 +4,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
+#include <random>
 #include <stdexcept>
 #include <string>
 
@@ -15,6 +17,26 @@ void check(bool condition, const char *message)
     {
         throw std::runtime_error(message);
     }
+}
+
+std::string fileContents(const std::string &path)
+{
+    std::ifstream file(path);
+    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+
+template <typename Action>
+bool throwsOutOfRange(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (const std::out_of_range &)
+    {
+        return true;
+    }
+    return false;
 }
 
 Config memoryConfig(std::uint64_t total, std::uint64_t frame)
@@ -107,6 +129,85 @@ int main()
             }
         }
         check(stress.stats().pagedOut > 0 && stress.stats().corruptReads == 0, "Stress paging is inconsistent");
+
+        // Page contents: values survive eviction through the backing-store file.
+        MemoryManager data;
+        data.configure(memoryConfig(128, 64), path); // 2 frames of 64 bytes
+        data.allocate(0, 256);                        // 4 pages
+        data.allocate(1, 128);                        // 2 pages
+        check(data.read16(0, 0x10) == 0, "Uninitialized memory must read 0");
+        data.write16(0, 0x10, 42);
+        data.write16(0, 0x3F, 0xBEEF); // straddles pages 0 and 1
+        check(data.read16(0, 0x10) == 42, "A written value must read back");
+        data.write16(1, 0x00, 7);
+        data.write16(1, 0x40, 9); // fills both frames with process 1, evicting process 0
+        check(data.residentBytes(0) == 0, "Process 0's pages must have been evicted");
+        {
+            const std::string contents = fileContents(path);
+            check(contents.find("pid=0 page=0") != std::string::npos, "Evicted page 0 must have a record");
+            check(contents.find("002A") != std::string::npos, "The record must hold 42 as 002A");
+            check(contents.find("pid=0 page=0                    | 0000 0000 0000 0000 0000 0000 0000 0000 002A") !=
+                      std::string::npos,
+                  "Record layout: padded header, '| ', little-endian words in hex");
+            check(contents.find("EF") != std::string::npos && contents.find("00BE") != std::string::npos,
+                  "A straddling value is split across two page records");
+        }
+        const std::uint64_t outBefore = data.stats().pagedOut;
+        check(data.read16(0, 0x10) == 42, "A value must survive eviction and page-in");
+        check(data.read16(0, 0x3F) == 0xBEEF, "A straddling value must survive eviction");
+        check(data.read16(1, 0x00) == 7 && data.read16(1, 0x40) == 9, "Process 1's values survive too");
+        check(data.stats().pagedOut > outBefore, "Reading evicted pages must page in and evict others");
+        check(data.stats().corruptReads == 0, "Every record must read back intact");
+
+        // Records show the process ID passed at allocation, not the internal key.
+        MemoryManager labelled;
+        labelled.configure(memoryConfig(64, 64), path); // a single frame
+        labelled.allocate(5, 128, 77);
+        labelled.write16(5, 0, 1);
+        labelled.write16(5, 64, 2); // evicts page 0
+        check(fileContents(path).find("pid=77 page=0") != std::string::npos, "Records must use the process ID");
+        check(labelled.read16(5, 0) == 1 && labelled.stats().corruptReads == 0, "Labelled records must read back");
+
+        // Range: the last valid uint16 starts 2 bytes before the end.
+        check(!throwsOutOfRange([&] { data.write16(1, 126, 1); }), "address size-2 is valid");
+        check(throwsOutOfRange([&] { data.write16(1, 127, 1); }), "address size-1 has only one byte");
+        check(throwsOutOfRange([&] { data.read16(1, 0x1000); }), "address past the end must throw");
+        try
+        {
+            data.read16(1, 0x1000);
+        }
+        catch (const std::out_of_range &error)
+        {
+            check(std::string(error.what()) == "0x1000", "The error names the hex address");
+        }
+
+        // Stress: random writes over few frames match a shadow copy after many evictions.
+        MemoryManager shadowed;
+        shadowed.configure(memoryConfig(256, 64), "");
+        for (std::size_t pid = 0; pid < 4; ++pid)
+        {
+            shadowed.allocate(pid, 1024);
+        }
+        std::map<std::pair<std::size_t, std::uint64_t>, std::uint16_t> shadow;
+        std::mt19937 rng(7);
+        for (int round = 0; round < 5000; ++round)
+        {
+            const std::size_t pid = rng() % 4;
+            const std::uint64_t address = (rng() % 511) * 2; // aligned, so writes never overlap
+            if (rng() % 2 == 0)
+            {
+                const auto value = static_cast<std::uint16_t>(rng());
+                shadowed.write16(pid, address, value);
+                shadow[{pid, address}] = value;
+            }
+            else
+            {
+                const auto it = shadow.find({pid, address});
+                check(shadowed.read16(pid, address) == (it == shadow.end() ? 0 : it->second),
+                      "A read disagreed with the shadow copy");
+            }
+        }
+        check(shadowed.stats().pagedOut > 0 && shadowed.stats().corruptReads == 0, "Shadow stress is inconsistent");
 
         std::remove(path.c_str());
         std::cout << "Memory manager checks passed.\n";

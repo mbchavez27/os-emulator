@@ -244,8 +244,10 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
             configureMemoryLocked(memoryConfig_);
         }
         const std::uint64_t memoryBytes = rollMemoryBytesLocked(process->id());
+        const std::uint32_t processId = process->id();
         processes_.push_back(std::move(process));
-        memory_.allocate(index, memoryBytes);
+        // Keyed by index (submitted IDs may repeat); records show the real ID.
+        memory_.allocate(index, memoryBytes, processId);
         ready_.push_back(index);
     }
     catch (...)

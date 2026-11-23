@@ -51,7 +51,23 @@ instruction it touches the page holding that instruction, with the program sprea
 evenly over its pages. A missing page is a page fault: the page is loaded into a free
 frame, or, when memory is full, the page loaded longest ago (global FIFO) is written
 to `csopesy-backing-store.txt` and its frame reused. Evicted pages are read back from
-that file when touched again. Faults are served within the tick, so paging never
+that file when touched again.
+
+Frames hold real bytes in a pool of `max-overall-mem` bytes allocated at `initialize`.
+A page touched for the first time is zero-filled, so memory never written reads as 0.
+`MemoryManager::read16` / `write16` read and write little-endian uint16 values at a byte
+address in a process's memory, faulting pages in as needed. An address whose 2 bytes don't
+both fit inside the process's memory throws `std::out_of_range` naming the hex address
+(for the upcoming `READ` / `WRITE` instructions and access violations).
+
+The backing store is a plain text file you can open at any time while the emulator runs.
+Each evicted page is one fixed-width record: a padded `pid=<process ID> page=<n>` header,
+`| `, then the page's contents as 4-digit hex uint16 words. Records are overwritten in
+place when slots are reused, and verified when read back. With `mem-per-frame 64`:
+
+```text
+pid=7 page=0                    | 0000 002A 0000 0000 ... 0000
+``` Faults are served within the tick, so paging never
 changes instruction timing. A finished process frees its frames and backing-store slots.
 
 CPU ticks in `vmstat` are core-ticks: each tick adds one active tick per busy core
