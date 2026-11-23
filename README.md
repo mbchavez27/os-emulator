@@ -20,6 +20,8 @@ succeeds, every command except `initialize` and `exit` is rejected.
 | `screen -r <name>` | Reattaches to an existing unfinished process; `Process <name> not found.` for missing or finished names. |
 | `screen` (bare or unknown flag) | Prints usage for `screen -s`, `screen -r`, and `screen -ls`. |
 | `report-util` | Writes the same report as `screen -ls` to `csopesy-log.txt`, replacing the previous report. |
+| `process-smi` | Main-menu summary in the style of `nvidia-smi`: CPU utilization, memory used / total and utilization, and every unfinished process with the physical memory its resident pages occupy. |
+| `vmstat` | Memory (total / used / free bytes and frames), active (on a core) and inactive (ready or sleeping) process counts, idle / active / total CPU ticks, and pages paged in / out. |
 | `exit` | Stops generation and all CPU threads, then ends the loop. |
 | anything else | `Command not recognized. Please try again.` |
 
@@ -35,6 +37,25 @@ Commands inside a process screen:
 | `process-smi` | Prints the process name, ID, logs, and progress (`Current instruction line` / `Lines of code`), or `Finished!` when the process is done. |
 | `exit` | Detaches and returns to the main menu (it does **not** shut the emulator down). |
 | anything else | `Unknown command '<input>'. Available commands: process-smi, exit` |
+
+## Memory manager
+
+`config.txt` also needs `max-overall-mem`, `mem-per-frame`, `min-mem-per-proc`, and
+`max-mem-per-proc`, each a power of 2 in [64, 65536] bytes. `mem-per-frame` is both the
+frame and the page size, and cannot exceed `max-overall-mem`. Every process gets a
+power-of-2 memory size rolled between the min and max (seeded by its ID). It needs
+size / `mem-per-frame` pages, and can be larger than physical memory.
+
+Allocation is demand paging. A new process has no resident pages. Before each
+instruction it touches the page holding that instruction, with the program spread
+evenly over its pages. A missing page is a page fault: the page is loaded into a free
+frame, or, when memory is full, the page loaded longest ago (global FIFO) is written
+to `csopesy-backing-store.txt` and its frame reused. Evicted pages are read back from
+that file when touched again. Faults are served within the tick, so paging never
+changes instruction timing. A finished process frees its frames and backing-store slots.
+
+CPU ticks in `vmstat` are core-ticks: each tick adds one active tick per busy core
+and one idle tick per idle core.
 
 ## Scheduling behavior
 
