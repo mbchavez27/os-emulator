@@ -71,6 +71,10 @@ The `initialize` command reads processor configuration and process attributes fr
 | `min-ins` | Minimum instructions/command per process. | `[1, 2^32]` |
 | `max-ins` | Maximum instructions/command per process. | `[1, 2^32]` |
 | `delays-per-exec` | Delay before executing the next instruction in CPU cycles (busy-waiting). If 0, executes per cycle. | `[0, 2^32]` |
+| `max-overall-mem` | *(MO2)* Maximum memory available in bytes. | `[2^6, 2^16]`, power of 2 |
+| `mem-per-frame` | *(MO2)* Memory per frame in bytes; also the page size. Frames = `max-overall-mem / mem-per-frame`. | `[2^6, 2^16]`, power of 2 |
+| `min-mem-per-proc` | *(MO2)* Smallest memory rolled for a process created via `scheduler-start`. Pages P = M / `mem-per-frame`. | `[2^6, 2^16]`, power of 2 |
+| `max-mem-per-proc` | *(MO2)* Largest memory rolled for a process created via `scheduler-start`. | `[2^6, 2^16]`, power of 2 |
 
 ## 7. MO2 Memory Visualization
 There must be a way to visualize and debug memory: `process-smi` gives a high-level overview of available/used memory, and `vmstat` gives fine-grained memory details.

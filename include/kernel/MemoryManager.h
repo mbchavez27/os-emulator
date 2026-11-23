@@ -59,7 +59,7 @@ public:
      *
      * @param config supplies max-overall-mem and mem-per-frame
      * @param backingStorePath file to use; empty uses an anonymous temporary file
-     * @throws std::invalid_argument if the frame size is 0 or larger than memory
+     * @throws std::invalid_argument if the frame size is odd, below 2, or larger than memory
      * @throws std::runtime_error if the backing store cannot be opened
      */
     void configure(const Config &config, const std::string &backingStorePath);
