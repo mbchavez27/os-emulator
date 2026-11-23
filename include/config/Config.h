@@ -34,7 +34,7 @@ struct Config
     // Memory keys: powers of 2 in [2^6, 2^16] bytes. Defaults are valid so
     // hand-built configs in checks get a working memory manager.
     uint64_t maxOverallMem = 16384; /**< `max-overall-mem`: physical memory in bytes. */
-    uint64_t memPerFrame = 16;      /**< `mem-per-frame`: frame size, also the page size. */
+    uint64_t memPerFrame = 64;      /**< `mem-per-frame`: frame size, also the page size. */
     uint64_t minMemPerProc = 4096;  /**< `min-mem-per-proc`: smallest rolled process size. */
     uint64_t maxMemPerProc = 4096;  /**< `max-mem-per-proc`: largest rolled process size. */
 

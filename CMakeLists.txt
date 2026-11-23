@@ -66,6 +66,12 @@ if(BUILD_TESTING)
   set_tests_properties(scheduler-report PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/report-check
   )
+  add_executable(config-check checks/config/ConfigCheck.cpp)
+  target_link_libraries(config-check PRIVATE emulator_core)
+  # Loads the shipped config.txt so a bad sample config fails the build's checks.
+  target_compile_definitions(config-check PRIVATE SOURCE_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config.txt")
+  add_test(NAME config COMMAND config-check)
+  set_tests_properties(config PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   add_executable(memory-manager-check checks/kernel/MemoryManagerCheck.cpp)
   target_link_libraries(memory-manager-check PRIVATE emulator_core)
   add_test(NAME memory-manager COMMAND memory-manager-check)
@@ -84,7 +90,7 @@ endif()
 # Compiler-specific warning flags
 set(warning_targets emulator_core os-emulator)
 if(BUILD_TESTING)
-  list(APPEND warning_targets scheduler-report-check process-smi-check process-screen-check scheduler-quantum-check scheduler-generation-check memory-manager-check memory-report-check)
+  list(APPEND warning_targets scheduler-report-check process-smi-check process-screen-check scheduler-quantum-check scheduler-generation-check memory-manager-check memory-report-check config-check)
 endif()
 foreach(target ${warning_targets})
   if(MSVC)
