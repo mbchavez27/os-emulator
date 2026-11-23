@@ -133,6 +133,10 @@ Every field below maps 1:1 to `include/Config.h`.
 | `min-ins` | `minIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
 | `max-ins` | `maxIns` | `uint64_t` | `[1, 4294967296]` (2^32) |
 | `delay-per-exec` | `delayPerExec` | `uint64_t` | `[0, 4294967296]` (2^32) |
+| `max-overall-mem` | `maxOverallMem` | `uint64_t` | power of 2 in `[64, 65536]` bytes |
+| `mem-per-frame` | `memPerFrame` | `uint64_t` | power of 2 in `[64, 65536]` bytes; at most `max-overall-mem` |
+| `min-mem-per-proc` | `minMemPerProc` | `uint64_t` | power of 2 in `[64, 65536]` bytes |
+| `max-mem-per-proc` | `maxMemPerProc` | `uint64_t` | power of 2 in `[64, 65536]` bytes; at least `min-mem-per-proc` |
 
 - `min-ins` must not exceed `max-ins`.
 - `delay-per-exec 0` executes without waiting between instructions. Positive
@@ -211,6 +215,7 @@ src/
     CommandHandler.cpp          # command parsing, gating, dispatch, process screen
     ProcessReport.cpp           # CPU utilization and process table formatting
     ProcessSmi.cpp              # process-smi logs/progress formatting
+    MemoryReport.cpp            # main-menu process-smi summary and vmstat formatting
   main.cpp                      # entry point: owns Emulator, runs CommandHandler
 ```
 
@@ -573,6 +578,55 @@ p137   (11/04/2026 02:02:52AM)    Core: 3      5 / 1734
 
 Finished processes:
 ----------------------------------------
+```
+
+### `process-smi` and `vmstat` (main menu)
+
+Both read one snapshot of the scheduler and memory manager. `process-smi` follows the
+spec's nvidia-smi mockup: a blank line, the header box, whole-number percentages, and
+every unfinished process with the physical memory its resident pages hold. Units are
+bytes, since `config.txt` sizes memory in bytes. Sample with `max-overall-mem 1024`,
+`mem-per-frame 64`:
+
+```text
+root:\> process-smi
+
+----------------------------------------------
+| PROCESS-SMI V01.00 Driver Version: 01.00 |
+----------------------------------------------
+CPU-Util: 100%
+Memory Usage: 1024B / 1024B
+Memory Util: 100%
+
+==============================================
+Running processes and memory usage:
+----------------------------------------------
+p01 64B
+p02 64B
+p03 0B
+p04 64B
+----------------------------------------------
+root:\>
+```
+
+`vmstat` follows the layout of Linux `vmstat -s` (numbers right-aligned in a 13-character
+column) with the spec's fields:
+
+```text
+root:\> vmstat
+         1024 B total memory
+         1024 B used memory
+            0 B free memory
+           16 total frames
+           16 used frames
+            0 free frames
+            4 active processes
+           23 inactive processes
+         2133 idle cpu ticks
+         9007 active cpu ticks
+        11140 total cpu ticks
+          578 num paged in
+          562 num paged out
 ```
 
 ### `exit`
