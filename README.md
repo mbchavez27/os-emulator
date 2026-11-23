@@ -5,7 +5,8 @@ CSOPESY command-line OS emulator.
 ## What it is right now
 
 Interactive REPL with validated configuration loading, FCFS / round-robin scheduling, dummy
-process generation, and a mock `screen` multiplexer. `initialize` reads `config.txt`; until it
+process generation, a mock `screen` multiplexer, and a demand-paging memory manager with a
+text-file backing store, inspected through `process-smi` and `vmstat`. `initialize` reads `config.txt`; until it
 succeeds, every command except `initialize` and `exit` is rejected.
 
 ## Usage
@@ -138,7 +139,7 @@ The generation check verifies cases 6–8 together and takes at least 70 seconds
 
 `initialize` reads `config.txt` from the current working directory. The file is
 space-separated, one key per line; values may be quoted (`scheduler "rr"`).
-Every field below maps 1:1 to `include/Config.h`.
+Every field below maps 1:1 to `include/config/Config.h`.
 
 | Key | `Config.h` field | Type | Range / values |
 | --- | --- | --- | --- |
@@ -185,20 +186,25 @@ powers the machine on and off.
 
 The kernel never includes anything from `shell/` or `system/`; the shell sits on top.
 
-Every file tracked in git (`build/`, `csopesy-log.txt`, and `Testing/` are
-generated and gitignored):
+Every file tracked in git (`build/`, `csopesy-log.txt`, `csopesy-backing-store.txt`,
+and `Testing/` are generated and gitignored):
 
 ```text
+.clangd                         # points clangd at build/compile_commands.json
 .gitignore                      # ignores build/, logs, binaries, IDE files
-CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 5 ctest checks, warnings
+CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 8 ctest checks, warnings
 LICENSE                         # MIT
 README.md                       # this file
 config.txt                      # sample configuration (read from the working directory)
 checks/
+  config/
+    ConfigCheck.cpp             # shipped config.txt loads; memory key ranges, powers of 2, relations
   kernel/
+    MemoryManagerCheck.cpp      # faults, FIFO eviction, backing-store round trip, read16/write16
     SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, 40-second demo
     SchedulerQuantumCheck.cpp     # RR quantum preemption, sleep/wake budgets, delay spacing
   shell/
+    MemoryReportCheck.cpp       # process-smi summary / vmstat layout + live paging run
     ProcessScreenCheck.cpp      # end-to-end REPL check: screen -s / process-smi / detach
     ProcessSmiCheck.cpp         # process-smi formatting incl. Finished! output
     SchedulerReportCheck.cpp    # report-util + screen -ls formatting across load levels
@@ -206,7 +212,8 @@ include/
   kernel/
     EmulatorProcess.h           # process entity + step states (avoids Windows process.h)
     Instruction.h               # Op, Operand, Instruction, Program, generator declaration
-    Scheduler.h                 # ProcessView + FCFS/RR scheduler (clock, dispatch, workers)
+    MemoryManager.h             # demand-paging allocator, frame pool, backing store, MemoryStats
+    Scheduler.h                 # ProcessView, SystemSnapshot + FCFS/RR scheduler (clock, dispatch, workers)
   config/
     Config.h                    # SchedulerType + validated configuration struct
   system/
@@ -215,6 +222,7 @@ include/
     AsciiArt.h                  # convertToAscii() declaration, ASCII_ROWS constant
     CommandHandler.h            # REPL loop declaration, borrows Emulator by reference
     ConsoleColors.h             # ANSI color constants (header-only)
+    MemoryReport.h              # main-menu process-smi summary and vmstat formatters
     ProcessReport.h             # shared screen -ls / report-util formatter
     ProcessSmi.h                # process-smi formatter declaration
 specs/
@@ -222,8 +230,9 @@ specs/
 src/
   kernel/
     Instruction.cpp             # seeded random program generator + program printing
+    MemoryManager.cpp           # frames, FIFO replacement, page bytes, backing-store records
     Process.cpp                 # flattening, per-instruction execution, FOR frames, uint16 clamp
-    Scheduler.cpp               # tick clock, dispatch, workers, generation, sleepers
+    Scheduler.cpp               # tick clock, dispatch, workers, generation, sleepers, paging, cpu ticks
   config/
     Config.cpp                  # config.txt parsing and validation
   shell/
@@ -372,8 +381,10 @@ The build includes scheduler/report checks covering idle, partial, and full
 utilization, live snapshots, report commands, RR rotation, sleep/wake budgets,
 stop/resume, FCFS/RR output comparisons on identical seeded programs, dummy
 generation cadence, naming, bounds, restarts, draining after generation stops,
-`process-smi` formatting (including `Finished!`), and an end-to-end
-`screen -s` / `process-smi` / detach REPL pass. Run them with:
+`process-smi` formatting (including `Finished!`), an end-to-end
+`screen -s` / `process-smi` / detach REPL pass, config validation (including that the
+shipped `config.txt` loads), the memory manager (faults, FIFO eviction, backing-store
+round trips, `read16` / `write16`), and the main-menu `process-smi` / `vmstat` layouts. Run them with:
 
 ```bash
 ctest --test-dir build -C Debug --output-on-failure
