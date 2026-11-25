@@ -302,7 +302,7 @@ int main()
         std::vector<Program> seeded;
         for (std::uint32_t seed = 1; seed <= 3; ++seed)
         {
-            auto program = generateProgram(config, "seeded", seed);
+            auto program = generateProgram(config, "seeded", seed, config.minMemPerProc);
             // Keep output-equivalence fixtures quick; long sleeps are checked separately.
             std::get<SleepInstruction>(program.instructions[1].payload).ticks = 2;
             seeded.push_back(std::move(program));

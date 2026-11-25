@@ -9,7 +9,7 @@
 
 struct Config;
 
-/** @brief The barebones process instructions from the CSOPESY spec. */
+/** @brief The process instructions from the CSOPESY spec; FOR stays last. */
 enum class Op
 {
     PRINT,
@@ -17,6 +17,8 @@ enum class Op
     ADD,
     SUBTRACT,
     SLEEP,
+    READ,
+    WRITE,
     FOR
 };
 
@@ -106,6 +108,20 @@ struct SleepInstruction
     uint8_t ticks = 0;
 };
 
+/** @brief `READ (var, 0xADDR)`: var = the uint16 stored at a byte address in the process's memory. */
+struct ReadInstruction
+{
+    std::string variable;      /**< Variable to set; declared if new. */
+    std::uint64_t address = 0; /**< Byte address; memory never written reads as 0. */
+};
+
+/** @brief `WRITE (0xADDR, value)`: stores a uint16 literal or variable at a byte address. */
+struct WriteInstruction
+{
+    std::uint64_t address = 0; /**< Byte address. */
+    Operand value;             /**< What to store. */
+};
+
 struct Instruction; // Forward declaration for the recursive FOR body.
 
 /** @brief `FOR ([body], repeats)`; bodies may nest up to 3 levels. */
@@ -123,6 +139,8 @@ struct Instruction
                                  AddInstruction,
                                  SubtractInstruction,
                                  SleepInstruction,
+                                 ReadInstruction,
+                                 WriteInstruction,
                                  ForInstruction>;
 
     Payload payload;
@@ -166,19 +184,34 @@ Op opOf(const Instruction &instruction);
 constexpr std::uint64_t kMaxProgramInstructions = 1'000'000;
 
 /**
+ * @brief Formats a memory address the way READ / WRITE print it.
+ *
+ * @param address the byte address
+ * @return uppercase hex with a 0x prefix, e.g. "0x1F40"
+ */
+std::string formatAddress(std::uint64_t address);
+
+/**
  * @brief Generates a deterministic random program.
  *
- * Identical config, process name, and seed produce an identical program.
- * Every instruction counts toward [minIns, maxIns], including FOR bodies.
- * Programs start with PRINT and, when at least two lines fit, a 255-tick SLEEP.
+ * Identical config, process name, seed, and memory size produce an identical
+ * program. Every instruction counts toward [minIns, maxIns], including FOR
+ * bodies; the count depends only on config and seed. Programs start with
+ * PRINT and, when at least two lines fit, a 255-tick SLEEP.
+ *
+ * READ / WRITE addresses are even and in [64, memoryBytes - 2]: past the
+ * symbol table and always in range. With memoryBytes of 64 or less there is
+ * no room past the symbol table, so no READ / WRITE is generated.
  *
  * @param config supplies minIns and maxIns
  * @param processName used in the default PRINT message
  * @param seed random seed; the process ID in practice
+ * @param memoryBytes the process's memory size, bounding READ / WRITE addresses
  * @return the generated program
  * @throws std::invalid_argument if minIns is 0 or greater than maxIns
  * @throws std::length_error if the picked size exceeds kMaxProgramInstructions
  */
 Program generateProgram(const Config &config,
                         const std::string &processName,
-                        std::uint32_t seed);
+                        std::uint32_t seed,
+                        std::uint64_t memoryBytes);

@@ -188,6 +188,10 @@ private:
     void execute(const SubtractInstruction &subtract, ProcessMemory &memory, std::optional<std::size_t> core);
     /** @brief Starts a SLEEP countdown; a zero-tick SLEEP does nothing. */
     void execute(const SleepInstruction &sleep, ProcessMemory &memory, std::optional<std::size_t> core);
+    /** @brief Loads the uint16 at the address into the variable; dropped if the table is full. */
+    void execute(const ReadInstruction &read, ProcessMemory &memory, std::optional<std::size_t> core);
+    /** @brief Stores the operand's value at the address. */
+    void execute(const WriteInstruction &write, ProcessMemory &memory, std::optional<std::size_t> core);
     /** @brief Pushes a loop frame for the FOR at pc_, or skips an empty body. */
     void execute(const ForInstruction &loop, ProcessMemory &memory, std::optional<std::size_t> core);
 
