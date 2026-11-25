@@ -1,4 +1,5 @@
 #include "kernel/Scheduler.h"
+#include "kernel/TickTimer.h"
 
 #include <algorithm>
 #include <limits>
@@ -6,13 +7,6 @@
 #include <stdexcept>
 #include <thread>
 #include <utility>
-
-#ifdef _WIN32
-// Declared directly (winmm.lib) instead of including <windows.h>, whose macros
-// collide with names in this project.
-extern "C" __declspec(dllimport) unsigned int __stdcall timeBeginPeriod(unsigned int period);
-extern "C" __declspec(dllimport) unsigned int __stdcall timeEndPeriod(unsigned int period);
-#endif
 
 Scheduler::~Scheduler()
 {
@@ -336,12 +330,8 @@ std::optional<ProcessView> Scheduler::findActiveProcessByName(const std::string 
 
 void Scheduler::tickLoop()
 {
-#ifdef _WIN32
-    // Windows rounds sleep_for(1ms) up to the ~15.6 ms system timer tick, which
-    // made the clock ~15x slower than on Linux/macOS. Request 1 ms resolution
-    // while the clock runs.
-    timeBeginPeriod(1);
-#endif
+    // A plain sleep_for(1ms) is ~15.6 ms on Windows; see TickTimer.
+    TickTimer timer(kCycleInterval);
     while (running_.load(std::memory_order_acquire))
     {
         {
@@ -354,11 +344,8 @@ void Scheduler::tickLoop()
         }
         cycles_.fetch_add(1, std::memory_order_relaxed);
         cv_.notify_all();
-        std::this_thread::sleep_for(kCycleInterval);
+        timer.wait();
     }
-#ifdef _WIN32
-    timeEndPeriod(1);
-#endif
 }
 
 void Scheduler::dispatchLoop()
