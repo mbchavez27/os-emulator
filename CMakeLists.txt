@@ -18,11 +18,12 @@ add_library(emulator_core STATIC
   src/shell/ProcessReport.cpp
   src/shell/ProcessSmi.cpp
   src/kernel/Scheduler.cpp
+  src/kernel/TickTimer.cpp
 )
 target_include_directories(emulator_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(emulator_core PUBLIC Threads::Threads)
 if(WIN32)
-  # timeBeginPeriod: 1 ms sleep resolution for the CPU tick clock.
+  # timeBeginPeriod: TickTimer's fallback when no high-resolution timer exists.
   target_link_libraries(emulator_core PUBLIC winmm)
 endif()
 
