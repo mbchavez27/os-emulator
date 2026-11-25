@@ -195,12 +195,21 @@ void Scheduler::submitProcess(std::unique_ptr<Process> process)
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    enqueueProcessLocked(std::move(process));
+    ensureMemoryConfiguredLocked();
+    const std::uint64_t memoryBytes = rollMemoryBytesLocked(process->id());
+    enqueueProcessLocked(std::move(process), memoryBytes);
     cv_.notify_all();
 }
 
-std::optional<std::uint32_t> Scheduler::createProcess(const std::string &name, const Config &config)
+std::optional<std::uint32_t> Scheduler::createProcess(const std::string &name,
+                                                      std::uint64_t memoryBytes,
+                                                      const Config &config)
 {
+    if (!isValidMemorySize(memoryBytes))
+    {
+        throw std::invalid_argument("Process memory must be a power of 2 in [64, 65536] bytes");
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
     if (hasProcessNamedLocked(name))
     {
@@ -213,7 +222,8 @@ std::optional<std::uint32_t> Scheduler::createProcess(const std::string &name, c
 
     // Share the generator's id counter so manual and generated ids never collide.
     const auto id = static_cast<std::uint32_t>(nextGeneratedNumber_);
-    enqueueProcessLocked(std::make_unique<Process>(id, name, generateProgram(config, name, id)));
+    ensureMemoryConfiguredLocked();
+    enqueueProcessLocked(std::make_unique<Process>(id, name, generateProgram(config, name, id)), memoryBytes);
     cv_.notify_all();
     return id;
 }
@@ -223,7 +233,7 @@ bool Scheduler::hasProcessNamedLocked(const std::string &name) const
     return processNames_.count(name) != 0;
 }
 
-void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
+void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process, std::uint64_t memoryBytes)
 {
     const std::uint64_t nextId = static_cast<std::uint64_t>(process->id()) + 1;
     const std::size_t index = processes_.size();
@@ -233,11 +243,6 @@ void Scheduler::enqueueProcessLocked(std::unique_ptr<Process> process)
     {
         nameInserted = processNames_.insert(name).second;
         nextProcessExecutionCycles_.resize(index + 1, 0);
-        if (!memory_.isConfigured())
-        {
-            configureMemoryLocked(memoryConfig_);
-        }
-        const std::uint64_t memoryBytes = rollMemoryBytesLocked(process->id());
         const std::uint32_t processId = process->id();
         processes_.push_back(std::move(process));
         // Keyed by index (submitted IDs may repeat); records show the real ID.
@@ -528,8 +533,11 @@ void Scheduler::generateProcessesLocked()
             continue;
         }
         const auto id = static_cast<std::uint32_t>(nextGeneratedNumber_);
+        ensureMemoryConfiguredLocked();
+        const std::uint64_t memoryBytes = rollMemoryBytesLocked(id);
         enqueueProcessLocked(std::make_unique<Process>(
-            id, name, generateProgram(generationConfig_, name, id)));
+                                 id, name, generateProgram(generationConfig_, name, id)),
+                             memoryBytes);
         generationAccumulator_ -= interval;
         ++created;
     }
@@ -562,6 +570,14 @@ void Scheduler::configureMemoryLocked(const Config &config)
 {
     memory_.configure(config, backingStorePath_);
     memoryConfig_ = config;
+}
+
+void Scheduler::ensureMemoryConfiguredLocked()
+{
+    if (!memory_.isConfigured())
+    {
+        configureMemoryLocked(memoryConfig_);
+    }
 }
 
 void Scheduler::touchNextPageLocked(std::size_t index)

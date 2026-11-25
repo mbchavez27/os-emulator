@@ -51,3 +51,19 @@ struct Config
      */
     static std::optional<Config> load(const std::string &path, std::string &error);
 };
+
+/** @brief Smallest memory size a key or process may use: 2^6 bytes. */
+constexpr uint64_t kMinMemorySize = 1ULL << 6;
+/** @brief Largest memory size a key or process may use: 2^16 bytes. */
+constexpr uint64_t kMaxMemorySize = 1ULL << 16;
+
+/**
+ * @brief Checks a memory size against the MO2 rule shared by the config keys and `screen -s`.
+ *
+ * @param bytes the size to check
+ * @return true if bytes is a power of 2 in [2^6, 2^16]
+ */
+constexpr bool isValidMemorySize(uint64_t bytes) noexcept
+{
+    return bytes >= kMinMemorySize && bytes <= kMaxMemorySize && (bytes & (bytes - 1)) == 0;
+}

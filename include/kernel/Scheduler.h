@@ -140,14 +140,19 @@ public:
      *
      * The name check and the insert happen under one lock, so concurrent
      * generation cannot claim the same name. Finished processes keep their names.
+     * Used by `screen -s`, so the memory size is given rather than rolled.
      *
      * @param name the process name
+     * @param memoryBytes the process's memory; a power of 2 in [64, 65536]
      * @param config supplies the instruction bounds
      * @return the new process ID, or std::nullopt if the name is taken
+     * @throws std::invalid_argument if memoryBytes is not a valid memory size
      * @throws std::overflow_error if process IDs are exhausted
      * @throws std::length_error if the program would exceed kMaxProgramInstructions
      */
-    std::optional<std::uint32_t> createProcess(const std::string &name, const Config &config);
+    std::optional<std::uint32_t> createProcess(const std::string &name,
+                                               std::uint64_t memoryBytes,
+                                               const Config &config);
 
     /** @return a copy of every process, in submission order */
     std::vector<ProcessView> snapshot() const;
@@ -211,12 +216,14 @@ private:
 
     void reapSleepersLocked();
     void generateProcessesLocked();
-    void enqueueProcessLocked(std::unique_ptr<Process> process);
+    void enqueueProcessLocked(std::unique_ptr<Process> process, std::uint64_t memoryBytes);
     bool hasProcessNamedLocked(const std::string &name) const;
     void assignReadyLocked();
     bool canDispatchLocked() const;
     std::vector<ProcessView> snapshotLocked() const;
     void configureMemoryLocked(const Config &config);
+    /** @brief Configures memory with the keys in force if nothing has yet. */
+    void ensureMemoryConfiguredLocked();
     void touchNextPageLocked(std::size_t index);
     void releaseIfFinishedLocked(std::size_t index);
 

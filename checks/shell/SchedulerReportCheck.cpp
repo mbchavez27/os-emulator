@@ -113,7 +113,7 @@ void checkAllocationFailures()
             failAllocationAfter = allocation;
             try
             {
-                scheduler.createProcess("retry", config);
+                scheduler.createProcess("retry", 256, config);
             }
             catch (const std::bad_alloc &)
             {
@@ -126,7 +126,7 @@ void checkAllocationFailures()
                 break;
             }
             check(scheduler.snapshot().size() == existing, "Failed creation changed the process list");
-            check(scheduler.createProcess("retry", config) == existing + 1,
+            check(scheduler.createProcess("retry", 256, config) == existing + 1,
                   "Failed creation consumed an id or name");
         }
         check(succeeded, "Allocation failure checks never reached successful creation");
@@ -158,7 +158,7 @@ void checkAllocationFailures()
     std::string error;
     check(emulator.initialize("config.txt", error), "Failure test could not initialize");
     failAllocationAtLeast.store(100 * sizeof(Instruction));
-    const auto manual = drive(emulator, "screen -s failed\nscreen -ls\n");
+    const auto manual = drive(emulator, "screen -s failed 256\nscreen -ls\n");
     failAllocationAtLeast.store(noAllocationFailure);
     check(manual.find("Failed to create process failed:") != std::string::npos,
           "Manual creation failure was not reported");

@@ -17,7 +17,7 @@ succeeds, every command except `initialize` and `exit` is rejected.
 | `scheduler-start` / `scheduler-test` | Starts dummy process generation (one process per `batch-process-freq` CPU ticks). |
 | `scheduler-stop` | Stops generation synchronously; queued and running processes continue to completion. |
 | `screen -ls` / `screen-ls` | Prints CPU utilization, core counts, and running/finished process rows. |
-| `screen -s <name>` | Creates process `<name>` and attaches the console to its process screen. |
+| `screen -s <name> <size>` | Creates process `<name>` with `<size>` bytes of memory and attaches the console to its process screen. The size must be a power of 2 in [64, 65536], or it prints `invalid memory allocation`; a missing or non-numeric size prints usage. |
 | `screen -r <name>` | Reattaches to an existing unfinished process; `Process <name> not found.` for missing or finished names. |
 | `screen` (bare or unknown flag) | Prints usage for `screen -s`, `screen -r`, and `screen -ls`. |
 | `report-util` | Writes the same report as `screen -ls` to `csopesy-log.txt`, replacing the previous report. |
@@ -44,7 +44,8 @@ Commands inside a process screen:
 `config.txt` also needs `max-overall-mem`, `mem-per-frame`, `min-mem-per-proc`, and
 `max-mem-per-proc`, each a power of 2 in [64, 65536] bytes. `mem-per-frame` is both the
 frame and the page size, and cannot exceed `max-overall-mem`. Every process gets a
-power-of-2 memory size rolled between the min and max (seeded by its ID). It needs
+power-of-2 memory size: `screen -s` processes get the size typed on the command line,
+and generated processes roll one between the min and max (seeded by its ID). It needs
 size / `mem-per-frame` pages, and can be larger than physical memory.
 
 Allocation is demand paging. A new process has no resident pages. Before each
@@ -492,14 +493,14 @@ shown as a whole percentage (`100%`) or with two decimals when fractional
 waiting in the ready queue or sleeping are not listed until they run again or
 finish, and stay reachable with `screen -r`.
 
-### `screen -s <name>` and `process-smi`
+### `screen -s <name> <size>` and `process-smi`
 
 Attaching to a process while the generator is running (see the note in the
 walkthrough — with the sample config the process queues behind the generated
 backlog):
 
 ```text
-root:\> screen -s demo1
+root:\> screen -s demo1 256
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -521,7 +522,7 @@ With no generator running, `process-smi` shows live `PRINT` output with the core
 and execution timestamp of each log line:
 
 ```text
-root:\> screen -s demo1
+root:\> screen -s demo1 256
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 
@@ -546,7 +547,7 @@ Once a process finishes, the progress block is replaced by `Finished!`.
 Creating a duplicate name is rejected before attaching:
 
 ```text
-root:\> screen -s demo1
+root:\> screen -s demo1 256
 Process demo1 already exists.
 ```
 
@@ -554,7 +555,17 @@ Malformed invocations print usage:
 
 ```text
 root:\> screen -s
-Usage: screen -s <process name>
+Usage: screen -s <process name> <memory size>
+
+root:\> screen -s demo2 abc
+Usage: screen -s <process name> <memory size>
+```
+
+A size that is not a power of 2 in [64, 65536] is refused:
+
+```text
+root:\> screen -s demo2 100
+invalid memory allocation
 ```
 
 ### `screen -r <name>`
@@ -676,9 +687,9 @@ Command not recognized. Please try again.
 
 root:\> screen
 Usage:
-  screen -s <process name>   Create a process and attach to it
-  screen -r <process name>   Reattach to a running process
-  screen -ls                 List running and finished processes
+  screen -s <process name> <memory size>   Create a process and attach to it
+  screen -r <process name>                 Reattach to a running process
+  screen -ls                               List running and finished processes
 
 root:\> screen -r ghost
 Process ghost not found.
@@ -701,7 +712,7 @@ configure; the process exits with status 0):
 initialize
 scheduler-start
 screen -ls
-screen -s demo1
+screen -s demo1 256
 process-smi
 exit            <- detach back to the main menu
 screen -r demo1
@@ -735,7 +746,7 @@ p137   (11/04/2026 02:02:52AM)    Core: 3      5 / 1734
 Finished processes:
 ----------------------------------------
 
-root:\> screen -s demo1
+root:\> screen -s demo1 256
 Process screen: demo1
 Type 'process-smi' for process information, 'exit' to return to the main menu.
 

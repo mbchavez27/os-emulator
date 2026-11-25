@@ -117,9 +117,11 @@ int main()
 
         Scheduler scheduler;
         scheduler.start(config);
+        const std::uint64_t sizes[] = {256, 512, 1024, 512};
         for (std::uint32_t id = 1; id <= 4; ++id)
         {
-            check(scheduler.createProcess("m0" + std::to_string(id), config).has_value(), "createProcess failed");
+            check(scheduler.createProcess("m0" + std::to_string(id), sizes[id - 1], config).has_value(),
+                  "createProcess failed");
         }
         std::uint64_t previousTicks = 0;
         bool sawEviction = false;

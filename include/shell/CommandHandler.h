@@ -69,9 +69,12 @@ private:
     void handleScreen(std::istringstream &arguments);
 
     /**
-     * @brief `screen -s <name>`: creates the process and attaches to it.
+     * @brief `screen -s <name> <size>`: creates the process and attaches to it.
      *
-     * @param arguments the words after `-s`; exactly one name is expected
+     * A missing or non-numeric size prints usage; a size that is not a power
+     * of 2 in [64, 65536] prints `invalid memory allocation`.
+     *
+     * @param arguments the words after `-s`; a name and a memory size in bytes
      */
     void createAndAttach(std::istringstream &arguments);
 

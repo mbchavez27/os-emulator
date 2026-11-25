@@ -136,11 +136,11 @@ bool readMemorySize(const std::map<std::string, std::string> &values,
                     uint64_t &result,
                     std::string &error)
 {
-    if (!readNumber(values, key, 1ULL << 6, 1ULL << 16, result, error))
+    if (!readNumber(values, key, kMinMemorySize, kMaxMemorySize, result, error))
     {
         return false;
     }
-    if ((result & (result - 1)) != 0)
+    if (!isValidMemorySize(result))
     {
         error = "Config key '" + key + "' must be a power of 2, got '" + std::to_string(result) + "'.";
         return false;
