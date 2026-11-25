@@ -8,6 +8,32 @@
 #include <thread>
 #include <utility>
 
+namespace
+{
+
+/** @brief A process's memory as the MemoryManager pages it; every access can fault. */
+class ManagedMemory final : public ProcessMemory
+{
+public:
+    ManagedMemory(MemoryManager &memory, std::size_t pid) : memory_(memory), pid_(pid) {}
+
+    std::uint16_t read16(std::uint64_t address) override
+    {
+        return memory_.read16(pid_, address);
+    }
+
+    void write16(std::uint64_t address, std::uint16_t value) override
+    {
+        memory_.write16(pid_, address, value);
+    }
+
+private:
+    MemoryManager &memory_;
+    std::size_t pid_;
+};
+
+} // namespace
+
 Scheduler::~Scheduler()
 {
     stop();
@@ -441,7 +467,8 @@ void Scheduler::workerLoop(std::size_t core)
                 continue;
             }
             touchNextPageLocked(index);
-            outcome = process->step(core);
+            ManagedMemory memory(memory_, index);
+            outcome = process->step(memory, core);
             const auto executedCycle = cycles_.load(std::memory_order_relaxed);
             nextCoreExecutionCycles_[core] = executedCycle + (delayPerExec_ == 0 ? 0 : 1);
             if (outcome == StepOutcome::EXECUTED)

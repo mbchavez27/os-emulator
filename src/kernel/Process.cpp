@@ -115,6 +115,16 @@ const std::map<std::string, std::uint16_t> &Process::variables() const noexcept
     return variables_;
 }
 
+std::optional<std::uint64_t> Process::symbolOffset(const std::string &name) const
+{
+    const auto symbol = symbols_.find(name);
+    if (symbol == symbols_.end())
+    {
+        return std::nullopt;
+    }
+    return symbol->second;
+}
+
 std::size_t Process::currentLine() const noexcept
 {
     return currentLine_;
@@ -161,7 +171,7 @@ void Process::markRunning()
     state_ = ProcessState::RUNNING;
 }
 
-StepOutcome Process::step(std::optional<std::size_t> core)
+StepOutcome Process::step(ProcessMemory &memory, std::optional<std::size_t> core)
 {
     if (state_ == ProcessState::FINISHED)
     {
@@ -182,7 +192,7 @@ StepOutcome Process::step(std::optional<std::size_t> core)
     const Instruction &instruction = code_[pc_];
     const std::size_t executedLine = pc_ + 1;
 
-    std::visit([&](const auto &payload) { execute(payload, core); }, instruction.payload);
+    std::visit([&](const auto &payload) { execute(payload, memory, core); }, instruction.payload);
     currentLine_ = executedLine;
 
     advance();
@@ -199,35 +209,37 @@ StepOutcome Process::step(std::optional<std::size_t> core)
     return StepOutcome::EXECUTED;
 }
 
-void Process::execute(const PrintInstruction &print, std::optional<std::size_t> core)
+void Process::execute(const PrintInstruction &print, ProcessMemory &memory, std::optional<std::size_t> core)
 {
     std::string line = print.text;
     if (print.variable)
     {
-        line += std::to_string(variableSlot(*print.variable));
+        line += std::to_string(loadVariable(memory, *print.variable));
     }
     logs_.push_back(std::move(line));
     logStamps_.push_back(LogStamp{std::chrono::system_clock::now(), core});
 }
 
-void Process::execute(const DeclareInstruction &declare, std::optional<std::size_t>)
+void Process::execute(const DeclareInstruction &declare, ProcessMemory &memory, std::optional<std::size_t>)
 {
-    variableSlot(declare.name) = declare.value;
+    storeVariable(memory, declare.name, declare.value);
 }
 
-void Process::execute(const AddInstruction &add, std::optional<std::size_t>)
+void Process::execute(const AddInstruction &add, ProcessMemory &memory, std::optional<std::size_t>)
 {
-    storeClamped(add.target, static_cast<std::int32_t>(resolve(add.lhs)) +
-                                 static_cast<std::int32_t>(resolve(add.rhs)));
+    const std::int32_t sum = static_cast<std::int32_t>(resolve(memory, add.lhs)) +
+                             static_cast<std::int32_t>(resolve(memory, add.rhs));
+    storeVariable(memory, add.target, clampToUint16(sum));
 }
 
-void Process::execute(const SubtractInstruction &subtract, std::optional<std::size_t>)
+void Process::execute(const SubtractInstruction &subtract, ProcessMemory &memory, std::optional<std::size_t>)
 {
-    storeClamped(subtract.target, static_cast<std::int32_t>(resolve(subtract.lhs)) -
-                                      static_cast<std::int32_t>(resolve(subtract.rhs)));
+    const std::int32_t difference = static_cast<std::int32_t>(resolve(memory, subtract.lhs)) -
+                                    static_cast<std::int32_t>(resolve(memory, subtract.rhs));
+    storeVariable(memory, subtract.target, clampToUint16(difference));
 }
 
-void Process::execute(const SleepInstruction &sleep, std::optional<std::size_t>)
+void Process::execute(const SleepInstruction &sleep, ProcessMemory &, std::optional<std::size_t>)
 {
     if (sleep.ticks > 0)
     {
@@ -236,7 +248,7 @@ void Process::execute(const SleepInstruction &sleep, std::optional<std::size_t>)
     }
 }
 
-void Process::execute(const ForInstruction &loop, std::optional<std::size_t>)
+void Process::execute(const ForInstruction &loop, ProcessMemory &, std::optional<std::size_t>)
 {
     const std::size_t bodySize = forBodySizes_[pc_];
     if (loop.repeats > 0 && bodySize > 0)
@@ -249,11 +261,6 @@ void Process::execute(const ForInstruction &loop, std::optional<std::size_t>)
         // Nothing to execute in the body; advance() then moves past the FOR itself.
         pc_ += bodySize;
     }
-}
-
-void Process::storeClamped(const std::string &target, std::int32_t value)
-{
-    variableSlot(target) = clampToUint16(value);
 }
 
 void Process::tickSleep()
@@ -281,18 +288,52 @@ void Process::tickSleep()
 
 void Process::finish()
 {
+    symbols_.clear();
     variables_.clear();
     state_ = ProcessState::FINISHED;
 }
 
-std::uint16_t &Process::variableSlot(const std::string &name)
+std::optional<std::uint64_t> Process::declare(ProcessMemory &memory, const std::string &name)
 {
-    return variables_[name];
+    if (const auto offset = symbolOffset(name))
+    {
+        return offset;
+    }
+    if (symbols_.size() >= kMaxVariables)
+    {
+        return std::nullopt;
+    }
+    const std::uint64_t offset = static_cast<std::uint64_t>(symbols_.size()) * 2;
+    memory.write16(offset, 0);
+    symbols_.emplace(name, offset);
+    variables_[name] = 0;
+    return offset;
 }
 
-std::uint16_t Process::resolve(const Operand &operand)
+std::uint16_t Process::loadVariable(ProcessMemory &memory, const std::string &name)
 {
-    return operand.isLiteral() ? operand.literalValue() : variableSlot(operand.variableName());
+    const auto offset = declare(memory, name);
+    if (!offset)
+    {
+        return 0;
+    }
+    const std::uint16_t value = memory.read16(*offset);
+    variables_[name] = value;
+    return value;
+}
+
+void Process::storeVariable(ProcessMemory &memory, const std::string &name, std::uint16_t value)
+{
+    if (const auto offset = declare(memory, name))
+    {
+        memory.write16(*offset, value);
+        variables_[name] = value;
+    }
+}
+
+std::uint16_t Process::resolve(ProcessMemory &memory, const Operand &operand)
+{
+    return operand.isLiteral() ? operand.literalValue() : loadVariable(memory, operand.variableName());
 }
 
 void Process::advance()
