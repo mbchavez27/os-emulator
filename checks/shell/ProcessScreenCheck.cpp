@@ -97,19 +97,29 @@ int main()
             emulator,
             "initialize\n"
             "screen -s\n"
+            "screen -s a\n"
             "screen -s a b\n"
-            "screen -s myproc\n"
+            "screen -s a 256 extra\n"
+            "screen -s a -256\n"
+            "screen -s a 100\n"
+            "screen -s a 32\n"
+            "screen -s a 131072\n"
+            "screen -s a 99999999999999999999999\n"
+            "screen -s myproc 256\n"
             "\n"
             "foo\n"
             "scheduler-start\n"
             "process-smi\n"
             "exit\n"
-            "screen -s myproc\n");
+            "screen -s myproc 256\n");
 
-        check(output.find("Usage: screen -s <process name>") != std::string::npos,
-              "Missing or extra process name was not rejected");
-        check(count(output, "Usage: screen -s <process name>") == 2,
-              "Both malformed screen -s calls should print usage");
+        // A missing, non-numeric, or trailing argument prints usage.
+        check(count(output, "Usage: screen -s <process name> <memory size>") == 5,
+              "Malformed screen -s calls should each print usage");
+        // A number that is not a power of 2 in [64, 65536] is refused.
+        check(count(output, "invalid memory allocation") == 4,
+              "Out-of-range or non-power-of-2 sizes should print invalid memory allocation");
+        check(named(emulator, "a").empty(), "A rejected screen -s still created the process");
         check(output.find("Process screen: myproc") != std::string::npos,
               "screen -s did not enter the process screen");
         // The main menu shares the root:\> prompt, so look for it right after the attach banner.
@@ -145,7 +155,7 @@ int main()
 
         // EOF inside the process screen detaches instead of terminating. The
         // stream is already at EOF, so the main loop then ends without exitApp().
-        const std::string eofOutput = drive(emulator, "screen -s eofproc\n");
+        const std::string eofOutput = drive(emulator, "screen -s eofproc 64\n");
         check(eofOutput.find("Process screen: eofproc") != std::string::npos,
               "EOF case did not attach");
         check(count(eofOutput, "Welcome to CSOPESY Emulator!") == 2,
@@ -155,13 +165,18 @@ int main()
 
         // Anything that is not -s, -r, or a bare -ls prints the full usage.
         const std::string usageOutput = drive(emulator, "screen\nscreen -x\nscreen -ls extra\n");
-        check(count(usageOutput, "Usage:\n  screen -s <process name>") == 3,
+        check(count(usageOutput, "Usage:\n  screen -s <process name> <memory size>") == 3,
               "Bare or malformed screen did not print the usage");
         check(usageOutput.find("Doing something") == std::string::npos,
               "screen still prints the placeholder");
 
         const auto created = named(emulator, "myproc");
         check(created.size() == 1, "screen -s must create exactly one process with that name");
+        check(created.front().memoryBytes == 256 || created.front().state == ProcessState::FINISHED,
+              "screen -s myproc 256 did not allocate 256 bytes");
+        check(named(emulator, "eofproc").front().memoryBytes == 64 ||
+                  named(emulator, "eofproc").front().state == ProcessState::FINISHED,
+              "screen -s eofproc 64 did not allocate 64 bytes");
 
         // The process keeps executing after detaching.
         const std::size_t before = created.front().currentLine;
@@ -177,12 +192,25 @@ int main()
         check(after > before, "The process stopped executing after detaching");
 
         // Generated and manual ids share one counter, so names stay unique.
-        const auto first = emulator.scheduler().createProcess("manual", emulator.config());
+        const auto first = emulator.scheduler().createProcess("manual", 512, emulator.config());
         check(first.has_value(), "createProcess rejected an unused name");
-        check(!emulator.scheduler().createProcess("manual", emulator.config()),
+        check(!emulator.scheduler().createProcess("manual", 512, emulator.config()),
               "createProcess accepted a duplicate name");
-        const auto second = emulator.scheduler().createProcess("manual2", emulator.config());
+        const auto second = emulator.scheduler().createProcess("manual2", 512, emulator.config());
         check(second.has_value() && *second != *first, "Manual processes reused an id");
+
+        // createProcess enforces the size rule itself, not only the shell.
+        bool rejected = false;
+        try
+        {
+            emulator.scheduler().createProcess("bad-size", 100, emulator.config());
+        }
+        catch (const std::invalid_argument &)
+        {
+            rejected = true;
+        }
+        check(rejected, "createProcess accepted a non-power-of-2 memory size");
+        check(named(emulator, "bad-size").empty(), "A rejected memory size still created the process");
 
         emulator.exitApp();
         std::cout << "Process screen checks passed.\n";

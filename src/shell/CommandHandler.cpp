@@ -12,7 +12,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <optional>
 
 namespace
 {
@@ -27,6 +30,24 @@ namespace
 void respond(const char *color, const std::string &message)
 {
     std::cout << color << message << console_colors::RESET << "\n\n";
+}
+
+/**
+ * @brief Parses a `screen -s` memory size written as plain decimal digits.
+ *
+ * @param word the size argument
+ * @return the size, or std::nullopt if word is empty or has a non-digit;
+ *         sizes too long to be valid come back as a value above 2^16
+ */
+std::optional<std::uint64_t> parseMemorySize(const std::string &word)
+{
+    if (word.empty() ||
+        !std::all_of(word.begin(), word.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+    {
+        return std::nullopt;
+    }
+    // Anything past 6 digits is above 2^16, so skip parsing it and overflowing.
+    return word.size() > 6 ? kMaxMemorySize + 1 : std::stoull(word);
 }
 
 /** @brief Prints the root:\> prompt in the prompt color. */
@@ -273,18 +294,26 @@ void CommandHandler::handleScreen(std::istringstream &arguments)
     {
         // Bare `screen`, unknown flags, and `screen -ls` with extra arguments.
         respond(console_colors::FAILURE, "Usage:\n"
-                                         "  screen -s <process name>   Create a process and attach to it\n"
-                                         "  screen -r <process name>   Reattach to a running process\n"
-                                         "  screen -ls                 List running and finished processes");
+                                         "  screen -s <process name> <memory size>   Create a process and attach to it\n"
+                                         "  screen -r <process name>                 Reattach to a running process\n"
+                                         "  screen -ls                               List running and finished processes");
     }
 }
 
 void CommandHandler::createAndAttach(std::istringstream &arguments)
 {
     std::string processName;
-    if (!(arguments >> processName) || !hasNoMoreWords(arguments))
+    std::string sizeWord;
+    const bool complete = (arguments >> processName) && (arguments >> sizeWord) && hasNoMoreWords(arguments);
+    const std::optional<std::uint64_t> memoryBytes = complete ? parseMemorySize(sizeWord) : std::nullopt;
+    if (!memoryBytes)
     {
-        respond(console_colors::FAILURE, "Usage: screen -s <process name>");
+        respond(console_colors::FAILURE, "Usage: screen -s <process name> <memory size>");
+        return;
+    }
+    if (!isValidMemorySize(*memoryBytes))
+    {
+        respond(console_colors::FAILURE, "invalid memory allocation");
         return;
     }
 
@@ -292,7 +321,7 @@ void CommandHandler::createAndAttach(std::istringstream &arguments)
     emulator.scheduler().start(emulator.config());
     try
     {
-        if (!emulator.scheduler().createProcess(processName, emulator.config()))
+        if (!emulator.scheduler().createProcess(processName, *memoryBytes, emulator.config()))
         {
             respond(console_colors::FAILURE, "Process " + processName + " already exists.");
             return;
