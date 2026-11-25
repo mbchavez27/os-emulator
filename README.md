@@ -62,6 +62,16 @@ address in a process's memory, faulting pages in as needed. An address whose 2 b
 both fit inside the process's memory throws `std::out_of_range` naming the hex address
 (for the upcoming `READ` / `WRITE` instructions and access violations).
 
+Variables live in the process's own memory. The first 64 bytes are the symbol table
+segment: each uint16 variable takes 2 bytes, in declaration order (the first at offset 0,
+the next at 2, and so on), so a process holds at most 32 variables. Once the table is full,
+further declarations are ignored: `DECLARE` does nothing, an `ADD` / `SUBTRACT` into a new
+name is dropped, and reading an undeclared name gives 0. Every `DECLARE`, `ADD`,
+`SUBTRACT`, and `PRINT` variable access goes through the memory manager, so it can page-fault
+like an instruction fetch; values are clamped to [0, 65535] and survive eviction. The symbol
+table is released when the process finishes. Scheduler snapshots carry a copy of each
+variable as of its last access, so inspecting a process never faults pages in.
+
 The backing store is a plain text file you can open at any time while the emulator runs.
 Each evicted page is one fixed-width record: a padded `pid=<process ID> page=<n>` header,
 `| `, then the page's contents as 4-digit hex uint16 words. Records are overwritten in
@@ -69,8 +79,9 @@ place when slots are reused, and verified when read back. With `mem-per-frame 64
 
 ```text
 pid=7 page=0                    | 0000 002A 0000 0000 ... 0000
-``` Faults are served within the tick, so paging never
-changes instruction timing. A finished process frees its frames and backing-store slots.
+```
+
+Faults are served within the tick, so paging never changes instruction timing. A finished process frees its frames and backing-store slots.
 
 CPU ticks in `vmstat` are core-ticks: each tick adds one active tick per busy core
 and one idle tick per idle core.
@@ -193,17 +204,19 @@ and `Testing/` are generated and gitignored):
 ```text
 .clangd                         # points clangd at build/compile_commands.json
 .gitignore                      # ignores build/, logs, binaries, IDE files
-CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 8 ctest checks, warnings
+CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 9 ctest checks, warnings
 LICENSE                         # MIT
 README.md                       # this file
 config.txt                      # sample configuration (read from the working directory)
 checks/
+  FlatMemory.h                  # unpaged ProcessMemory for checks that step a Process directly
   config/
     ConfigCheck.cpp             # shipped config.txt loads; memory key ranges, powers of 2, relations
   kernel/
     MemoryManagerCheck.cpp      # faults, FIFO eviction, backing-store round trip, read16/write16
     SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, 40-second demo
     SchedulerQuantumCheck.cpp     # RR quantum preemption, sleep/wake budgets, delay spacing
+    SymbolTableCheck.cpp        # symbol table layout, 32-variable cap, clamping, survives eviction
   shell/
     MemoryReportCheck.cpp       # process-smi summary / vmstat layout + live paging run
     ProcessScreenCheck.cpp      # end-to-end REPL check: screen -s / process-smi / detach
@@ -214,6 +227,7 @@ include/
     EmulatorProcess.h           # process entity + step states (avoids Windows process.h)
     Instruction.h               # Op, Operand, Instruction, Program, generator declaration
     MemoryManager.h             # demand-paging allocator, frame pool, backing store, MemoryStats
+    ProcessMemory.h             # read16/write16 interface a Process executes against
     Scheduler.h                 # ProcessView, SystemSnapshot + FCFS/RR scheduler (clock, dispatch, workers)
     TickTimer.h                 # paces the CPU clock (high-resolution timer on Windows)
   config/
@@ -233,7 +247,7 @@ src/
   kernel/
     Instruction.cpp             # seeded random program generator + program printing
     MemoryManager.cpp           # frames, FIFO replacement, page bytes, backing-store records
-    Process.cpp                 # flattening, per-instruction execution, FOR frames, uint16 clamp
+    Process.cpp                 # flattening, per-instruction execution, FOR frames, symbol table
     Scheduler.cpp               # tick clock, dispatch, workers, generation, sleepers, paging, cpu ticks
     TickTimer.cpp               # Windows waitable timer / sleep_for; keeps <windows.h> out of other files
   config/
@@ -387,7 +401,8 @@ generation cadence, naming, bounds, restarts, draining after generation stops,
 `process-smi` formatting (including `Finished!`), an end-to-end
 `screen -s` / `process-smi` / detach REPL pass, config validation (including that the
 shipped `config.txt` loads), the memory manager (faults, FIFO eviction, backing-store
-round trips, `read16` / `write16`), and the main-menu `process-smi` / `vmstat` layouts. Run them with:
+round trips, `read16` / `write16`), the symbol table segment (layout, the 32-variable
+cap, clamping, values surviving eviction), and the main-menu `process-smi` / `vmstat` layouts. Run them with:
 
 ```bash
 ctest --test-dir build -C Debug --output-on-failure

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kernel/Instruction.h"
+#include "kernel/ProcessMemory.h"
 
 #include <chrono>
 #include <cstddef>
@@ -35,15 +36,25 @@ enum class StepOutcome
 };
 
 /**
- * @brief A runnable process: identity, variables, logs, and program counter.
+ * @brief A runnable process: identity, symbol table, logs, and program counter.
  *
  * The generated Program is flattened into a linear code vector at construction,
  * so stepping is a single index advance plus an explicit FOR frame stack. The
  * class knows nothing about threads, cores, or the scheduler.
+ *
+ * Variables live in the process's own memory: the first kSymbolTableBytes bytes
+ * are the symbol table, 2 bytes per uint16 variable in declaration order. Every
+ * variable read and write goes through the ProcessMemory passed to step(), so
+ * it can page-fault. Once kMaxVariables are declared, new names are ignored.
  */
 class Process
 {
 public:
+    /** @brief Size of the symbol table segment at the start of process memory. */
+    static constexpr std::uint64_t kSymbolTableBytes = 64;
+    /** @brief Variables that fit in the symbol table, one uint16 each. */
+    static constexpr std::size_t kMaxVariables = kSymbolTableBytes / 2;
+
     /**
      * @brief Creates a ready process.
      *
@@ -79,8 +90,19 @@ public:
     /** @return the time and core of each entry in logs(), same length and order */
     const std::vector<LogStamp> &logStamps() const noexcept;
 
-    /** @return the declared variables; empty once finished, since storage is released */
+    /**
+     * @return the declared variables as of their last read or write; empty once finished
+     *
+     * A copy kept for display, so snapshots never touch (or page-fault) process
+     * memory. Execution always reads the symbol table itself.
+     */
     const std::map<std::string, std::uint16_t> &variables() const noexcept;
+
+    /**
+     * @param name a variable name
+     * @return its byte offset in the symbol table, or std::nullopt if not declared
+     */
+    std::optional<std::uint64_t> symbolOffset(const std::string &name) const;
 
     /** @return the 1-based line most recently executed, or 0 before the first step */
     std::size_t currentLine() const noexcept;
@@ -114,10 +136,11 @@ public:
      * SLEEP executes, advances the program counter, and returns SLEEPING with
      * the loop frame stack intact. A finished process never mutates again.
      *
+     * @param memory the process's memory; holds the symbol table
      * @param core the core executing the step; recorded on any log line it emits
      * @return what the step did
      */
-    StepOutcome step(std::optional<std::size_t> core = std::nullopt);
+    StepOutcome step(ProcessMemory &memory, std::optional<std::size_t> core = std::nullopt);
 
     /** @brief Counts down one SLEEP tick; wakes or finishes the process at zero. */
     void tickSleep();
@@ -144,7 +167,8 @@ private:
     std::size_t currentLine_ = 0;          /**< 1-based line most recently executed. */
     std::uint8_t sleepTicksRemaining_ = 0; /**< Ticks left in the current SLEEP. */
 
-    std::map<std::string, std::uint16_t> variables_;
+    std::map<std::string, std::uint64_t> symbols_;   /**< Variable name -> symbol-table byte offset. */
+    std::map<std::string, std::uint16_t> variables_; /**< Display copy of the values; see variables(). */
     std::vector<std::string> logs_;
     std::vector<LogStamp> logStamps_; /**< Parallel to logs_: one stamp per entry. */
 
@@ -152,47 +176,62 @@ private:
      * @brief Appends the message, plus the variable's value if any, to the logs.
      *
      * @param print the PRINT instruction
+     * @param memory holds the variable
      * @param core the executing core, recorded on the log line
      */
-    void execute(const PrintInstruction &print, std::optional<std::size_t> core);
-    /** @brief Sets a variable to its declared value. */
-    void execute(const DeclareInstruction &declare, std::optional<std::size_t> core);
+    void execute(const PrintInstruction &print, ProcessMemory &memory, std::optional<std::size_t> core);
+    /** @brief Sets a variable to its declared value; ignored once the symbol table is full. */
+    void execute(const DeclareInstruction &declare, ProcessMemory &memory, std::optional<std::size_t> core);
     /** @brief Stores lhs + rhs, clamped to uint16. */
-    void execute(const AddInstruction &add, std::optional<std::size_t> core);
+    void execute(const AddInstruction &add, ProcessMemory &memory, std::optional<std::size_t> core);
     /** @brief Stores lhs - rhs, clamped to uint16. */
-    void execute(const SubtractInstruction &subtract, std::optional<std::size_t> core);
+    void execute(const SubtractInstruction &subtract, ProcessMemory &memory, std::optional<std::size_t> core);
     /** @brief Starts a SLEEP countdown; a zero-tick SLEEP does nothing. */
-    void execute(const SleepInstruction &sleep, std::optional<std::size_t> core);
+    void execute(const SleepInstruction &sleep, ProcessMemory &memory, std::optional<std::size_t> core);
     /** @brief Pushes a loop frame for the FOR at pc_, or skips an empty body. */
-    void execute(const ForInstruction &loop, std::optional<std::size_t> core);
+    void execute(const ForInstruction &loop, ProcessMemory &memory, std::optional<std::size_t> core);
 
     /**
-     * @brief Writes an ADD/SUBTRACT result clamped to [0, 65535].
+     * @brief Finds a variable's symbol-table slot, declaring it if there is room.
      *
-     * @param target the variable to set; declared with 0 if new
-     * @param value the unclamped result
-     */
-    void storeClamped(const std::string &target, std::int32_t value);
-
-    /**
-     * @brief Looks up a variable, auto-declaring it as 0 on first use (per the spec).
+     * A new variable is written as 0 so stale bytes never leak into it.
      *
+     * @param memory holds the symbol table
      * @param name the variable name
-     * @return a writable reference to its value
+     * @return its byte offset, or std::nullopt if it is new and all kMaxVariables slots are taken
      */
-    std::uint16_t &variableSlot(const std::string &name);
+    std::optional<std::uint64_t> declare(ProcessMemory &memory, const std::string &name);
+
+    /**
+     * @brief Reads a variable, auto-declaring it as 0 on first use (per the spec).
+     *
+     * @param memory holds the symbol table
+     * @param name the variable name
+     * @return its value; 0 if it could not be declared because the table is full
+     */
+    std::uint16_t loadVariable(ProcessMemory &memory, const std::string &name);
+
+    /**
+     * @brief Writes a variable, declaring it if new; dropped if the table is full.
+     *
+     * @param memory holds the symbol table
+     * @param name the variable name
+     * @param value the value to store
+     */
+    void storeVariable(ProcessMemory &memory, const std::string &name, std::uint16_t value);
 
     /**
      * @brief Evaluates an operand.
      *
+     * @param memory holds the symbol table
      * @param operand a variable name or a literal
      * @return the literal, or the variable's value (auto-declared as 0)
      */
-    std::uint16_t resolve(const Operand &operand);
+    std::uint16_t resolve(ProcessMemory &memory, const Operand &operand);
 
     /** @brief Moves pc_ past the executed instruction, looping FOR bodies as needed. */
     void advance();
 
-    /** @brief Marks the process finished and releases its variable storage. */
+    /** @brief Marks the process finished and forgets its symbol table; the scheduler frees the memory. */
     void finish();
 };

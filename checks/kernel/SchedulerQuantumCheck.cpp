@@ -1,5 +1,7 @@
 #include "kernel/Scheduler.h"
 
+#include "../FlatMemory.h"
+
 #include <algorithm>
 #include <chrono>
 #include <functional>
@@ -194,10 +196,11 @@ int main()
 {
     try
     {
+        FlatMemory scratch(Process::kSymbolTableBytes);
         Process cleanup(1, "cleanup", Program{{
             Instruction{DeclareInstruction{"x", 42}}, Instruction{SleepInstruction{2}}}});
-        cleanup.step();
-        cleanup.step();
+        cleanup.step(scratch);
+        cleanup.step(scratch);
         check(cleanup.isSleeping() && cleanup.variables().at("x") == 42,
               "Sleeping process released its variables early");
         cleanup.tickSleep();
@@ -207,7 +210,7 @@ int main()
               "Finishing after SLEEP did not release variables");
 
         Process longSleep(1, "long-sleep", Program{{Instruction{SleepInstruction{255}}}});
-        longSleep.step();
+        longSleep.step(scratch);
         for (int tick = 0; tick < 254; ++tick)
         {
             longSleep.tickSleep();
