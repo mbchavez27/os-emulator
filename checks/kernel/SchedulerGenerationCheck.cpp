@@ -63,7 +63,7 @@ void checkNamesAndBounds(const Config &config, const std::vector<ProcessView> &v
         check(ids.insert(view.id).second && names.insert(view.name).second, "Generated a duplicate identity");
         check(view.linesOfCode >= config.minIns && view.linesOfCode <= config.maxIns,
               "Generated program is outside the configured bounds");
-        check(view.linesOfCode == generateProgram(config, view.name, view.id).instructionCount(),
+        check(view.linesOfCode == generateProgram(config, view.name, view.id, config.minMemPerProc).instructionCount(),
               "Generated program did not use the instruction generator");
     }
 }
@@ -74,7 +74,7 @@ void checkOpening()
     for (const std::uint64_t size : {1, 2, 100})
     {
         config.minIns = config.maxIns = size;
-        const auto program = generateProgram(config, "opening", 1);
+        const auto program = generateProgram(config, "opening", 1, config.minMemPerProc);
         check(program.instructionCount() == size, "I/O opening exceeded instruction bounds");
         const auto *greeting = std::get_if<PrintInstruction>(&program.instructions.front().payload);
         check(greeting && greeting->text == "Hello world from opening!", "Generated program lacks its greeting");
@@ -313,7 +313,7 @@ int main()
             bool refused = false;
             try
             {
-                generateProgram(huge, "huge", 1);
+                generateProgram(huge, "huge", 1, huge.minMemPerProc);
             }
             catch (const std::length_error &)
             {

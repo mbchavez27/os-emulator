@@ -249,7 +249,7 @@ std::optional<std::uint32_t> Scheduler::createProcess(const std::string &name,
     // Share the generator's id counter so manual and generated ids never collide.
     const auto id = static_cast<std::uint32_t>(nextGeneratedNumber_);
     ensureMemoryConfiguredLocked();
-    enqueueProcessLocked(std::make_unique<Process>(id, name, generateProgram(config, name, id)), memoryBytes);
+    enqueueProcessLocked(std::make_unique<Process>(id, name, generateProgram(config, name, id, memoryBytes)), memoryBytes);
     cv_.notify_all();
     return id;
 }
@@ -563,7 +563,7 @@ void Scheduler::generateProcessesLocked()
         ensureMemoryConfiguredLocked();
         const std::uint64_t memoryBytes = rollMemoryBytesLocked(id);
         enqueueProcessLocked(std::make_unique<Process>(
-                                 id, name, generateProgram(generationConfig_, name, id)),
+                                 id, name, generateProgram(generationConfig_, name, id, memoryBytes)),
                              memoryBytes);
         generationAccumulator_ -= interval;
         ++created;

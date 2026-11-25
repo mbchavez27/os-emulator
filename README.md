@@ -60,7 +60,20 @@ A page touched for the first time is zero-filled, so memory never written reads 
 `MemoryManager::read16` / `write16` read and write little-endian uint16 values at a byte
 address in a process's memory, faulting pages in as needed. An address whose 2 bytes don't
 both fit inside the process's memory throws `std::out_of_range` naming the hex address
-(for the upcoming `READ` / `WRITE` instructions and access violations).
+(access violations are handled in a later ticket).
+
+Two instructions use process memory directly:
+
+| Instruction | Effect |
+| --- | --- |
+| `READ (var, 0x1000)` | Stores the uint16 at that byte address in `var` (declared if new). Memory never written reads as 0. |
+| `WRITE (0x2000, 42)` / `WRITE (0x500, varA)` | Stores the literal, or the variable's value, as a uint16 at that address. |
+
+Values are little-endian, and a later `READ` of a written address returns the written
+value, even after the page has been evicted and read back. `scheduler-start` generates
+`READ` / `WRITE` with even addresses in [64, process memory − 2], so they never touch the
+symbol table and always stay in range; a 64-byte process has no room past the symbol
+table and gets none.
 
 Variables live in the process's own memory. The first 64 bytes are the symbol table
 segment: each uint16 variable takes 2 bytes, in declaration order (the first at offset 0,
@@ -111,7 +124,8 @@ after one full interval. Names use a minimum of two digits (`p01`, `p02`, ...,
 the configured instruction bounds and their process ID as the generator seed.
 Generated programs begin with a greeting PRINT and a 255-tick SLEEP representing
 initial I/O, both counted within the configured line limit. A one-line program
-contains only the greeting. Remaining instructions are random, with one-tick sleeps;
+contains only the greeting. Remaining instructions are random (PRINT, DECLARE, ADD,
+SUBTRACT, SLEEP, READ, WRITE, FOR), with one-tick sleeps;
 the interpreter supports the full `uint8` sleep range. FOR bodies still repeat and
 count toward the program's line count. When a process sleeps or finishes, queued
 work fills released cores before a report can observe their state.
@@ -204,7 +218,7 @@ and `Testing/` are generated and gitignored):
 ```text
 .clangd                         # points clangd at build/compile_commands.json
 .gitignore                      # ignores build/, logs, binaries, IDE files
-CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 9 ctest checks, warnings
+CMakeLists.txt                  # emulator_core lib, os-emulator CLI, 10 ctest checks, warnings
 LICENSE                         # MIT
 README.md                       # this file
 config.txt                      # sample configuration (read from the working directory)
@@ -214,6 +228,7 @@ checks/
     ConfigCheck.cpp             # shipped config.txt loads; memory key ranges, powers of 2, relations
   kernel/
     MemoryManagerCheck.cpp      # faults, FIFO eviction, backing-store round trip, read16/write16
+    ReadWriteCheck.cpp          # READ / WRITE round trips, unwritten reads, eviction, generated addresses
     SchedulerGenerationCheck.cpp  # generation cadence, naming, bounds, restart, 40-second demo
     SchedulerQuantumCheck.cpp     # RR quantum preemption, sleep/wake budgets, delay spacing
     SymbolTableCheck.cpp        # symbol table layout, 32-variable cap, clamping, survives eviction
@@ -225,7 +240,7 @@ checks/
 include/
   kernel/
     EmulatorProcess.h           # process entity + step states (avoids Windows process.h)
-    Instruction.h               # Op, Operand, Instruction, Program, generator declaration
+    Instruction.h               # Op, Operand, Instruction (incl. READ / WRITE), Program, generator declaration
     MemoryManager.h             # demand-paging allocator, frame pool, backing store, MemoryStats
     ProcessMemory.h             # read16/write16 interface a Process executes against
     Scheduler.h                 # ProcessView, SystemSnapshot + FCFS/RR scheduler (clock, dispatch, workers)
@@ -245,7 +260,7 @@ specs/
   csopesy_emulator_specifications.md  # machine project spec
 src/
   kernel/
-    Instruction.cpp             # seeded random program generator + program printing
+    Instruction.cpp             # seeded random program generator (in-range READ / WRITE) + program printing
     MemoryManager.cpp           # frames, FIFO replacement, page bytes, backing-store records
     Process.cpp                 # flattening, per-instruction execution, FOR frames, symbol table
     Scheduler.cpp               # tick clock, dispatch, workers, generation, sleepers, paging, cpu ticks
@@ -402,7 +417,8 @@ generation cadence, naming, bounds, restarts, draining after generation stops,
 `screen -s` / `process-smi` / detach REPL pass, config validation (including that the
 shipped `config.txt` loads), the memory manager (faults, FIFO eviction, backing-store
 round trips, `read16` / `write16`), the symbol table segment (layout, the 32-variable
-cap, clamping, values surviving eviction), and the main-menu `process-smi` / `vmstat` layouts. Run them with:
+cap, clamping, values surviving eviction), `READ` / `WRITE` (round trips, unwritten
+memory reading 0, eviction, in-range generated addresses), and the main-menu `process-smi` / `vmstat` layouts. Run them with:
 
 ```bash
 ctest --test-dir build -C Debug --output-on-failure

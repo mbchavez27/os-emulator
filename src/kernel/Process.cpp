@@ -248,6 +248,16 @@ void Process::execute(const SleepInstruction &sleep, ProcessMemory &, std::optio
     }
 }
 
+void Process::execute(const ReadInstruction &read, ProcessMemory &memory, std::optional<std::size_t>)
+{
+    storeVariable(memory, read.variable, memory.read16(read.address));
+}
+
+void Process::execute(const WriteInstruction &write, ProcessMemory &memory, std::optional<std::size_t>)
+{
+    memory.write16(write.address, resolve(memory, write.value));
+}
+
 void Process::execute(const ForInstruction &loop, ProcessMemory &, std::optional<std::size_t>)
 {
     const std::size_t bodySize = forBodySizes_[pc_];
