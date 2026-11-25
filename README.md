@@ -214,6 +214,7 @@ include/
     Instruction.h               # Op, Operand, Instruction, Program, generator declaration
     MemoryManager.h             # demand-paging allocator, frame pool, backing store, MemoryStats
     Scheduler.h                 # ProcessView, SystemSnapshot + FCFS/RR scheduler (clock, dispatch, workers)
+    TickTimer.h                 # paces the CPU clock (high-resolution timer on Windows)
   config/
     Config.h                    # SchedulerType + validated configuration struct
   system/
@@ -233,6 +234,7 @@ src/
     MemoryManager.cpp           # frames, FIFO replacement, page bytes, backing-store records
     Process.cpp                 # flattening, per-instruction execution, FOR frames, uint16 clamp
     Scheduler.cpp               # tick clock, dispatch, workers, generation, sleepers, paging, cpu ticks
+    TickTimer.cpp               # Windows waitable timer / sleep_for; keeps <windows.h> out of other files
   config/
     Config.cpp                  # config.txt parsing and validation
   shell/
